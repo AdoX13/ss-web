@@ -11,19 +11,29 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
-      - mongo-db
-      - broker
+      mongo-db:
+        condition: service_healthy
+      broker:
+        condition: service_healthy
     ports:
       - 8080:8080
     volumes:
       - ./uploads:/app/uploads
     networks:
       - backend
+    restart: unless-stopped
     secrets:
       - ca.crt
       - web.crt
       - web.key
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/broker-info"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
 
+  # MQTT Broker with mTLS (Lab 7)
   broker:
     user: "${UID}:${GID}"
     image: eclipse-mosquitto:latest
@@ -31,15 +41,31 @@ services:
     hostname: broker
     ports:
       - "8883:8883"
+      # Port 1883 removed — no plaintext MQTT listener configured.
+      # All connections require mTLS client certificates (Lab 7).
     volumes:
-      - ./broker/mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - ./broker/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+    secrets:
+      - ca.crt
+      - server.crt
+      - server.key
+      - web.crt
+      - web.key
     networks:
       - backend
     secrets:
       - ca.crt
       - server.crt
       - server.key
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_sub -h localhost -p 8883 --cafile /run/secrets/ca.crt --cert /run/secrets/web.crt --key /run/secrets/web.key -t '$$SYS/broker/uptime' -C 1 -W 5 --insecure 2>/dev/null || exit 1"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 10s
 
+  # MongoDB with authentication
   mongo-db:
     container_name: mongo-db
     image: mongo:latest
@@ -51,6 +77,13 @@ services:
       - mongo-data:/data/db
     networks:
       - backend
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')", "--quiet"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
 
 volumes:
   mongo-data:

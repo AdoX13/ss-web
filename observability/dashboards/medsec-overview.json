@@ -1,0 +1,38 @@
+{
+  "title": "MedSec-OCR Overview",
+  "timezone": "browser",
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "API Request Rate",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        { "expr": "rate(http_requests_total[1m])", "legendFormat": "{{method}} {{path}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "API Error Rate",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        { "expr": "rate(http_requests_total{status=~\"5..\"}[1m])", "legendFormat": "{{method}} {{path}} (5xx)" }
+      ]
+    },
+    {
+      "type": "gauge",
+      "title": "OCR Jobs Processed",
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 8 },
+      "targets": [
+        { "expr": "sum(ocr_jobs_total)", "legendFormat": "Total Jobs" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "OCR Processing Latency",
+      "gridPos": { "h": 8, "w": 18, "x": 6, "y": 8 },
+      "targets": [
+        { "expr": "rate(ocr_processing_ms_sum[1m]) / rate(ocr_processing_ms_count[1m])", "legendFormat": "Avg Latency (ms)" }
+      ]
+    }
+  ]
+}

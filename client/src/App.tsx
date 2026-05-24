@@ -17,6 +17,7 @@ import ReviewQueuePage from './pages/reviewQueuePage';
 import ReportsPage from './pages/reportsPage';
 import ReportDetailPage from './pages/reportsPage/ReportDetail';
 import AdminUsersPage from './pages/adminPage';
+import CameraCapturePage from './pages/cameraCapturePage';
 import ProtectedRoute from './components/ProtectedRoute';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ThemeProvider } from './theme/ThemeContext';
@@ -44,8 +45,10 @@ const Layout = () => {
     if (hasRole('admin', 'doctor')) leftButtons.push(navTo('Photos', '/photos'));
     if (hasRole('admin', 'doctor')) leftButtons.push(navTo('Devices', '/devices'));
     if (hasRole('admin', 'doctor', 'researcher'))
-      leftButtons.push(navTo('Statistics', '/statistics'));
+    leftButtons.push(navTo('Statistics', '/statistics'));
     leftButtons.push(navTo('Reports', '/reports'));
+    leftButtons.push(navTo('Camera', '/camera'));
+        
     if (hasRole('admin', 'doctor'))
       leftButtons.push(navTo('Review Queue', '/review-queue'));
     if (hasRole('admin')) leftButtons.push(navTo('Admin', '/admin/users'));

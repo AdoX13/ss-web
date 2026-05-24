@@ -90,14 +90,14 @@ func (b BrokerHandler) HandlePhoto(_ mqtt.Client, msg mqtt.Message) {
 		return
 	}
 
-	routes.IncrMQTTMessages()
-	routes.IncrOCRRequests()
+	// Extract text from image
+	startTime := time.Now()
+	text, err := b.extractTextFromImage(body)
+	processingDuration := time.Since(startTime).Milliseconds()
+	utils.OcrJobsTotal.Inc()
+	utils.OcrProcessingMsSum.Add(float64(processingDuration))
+	utils.OcrProcessingMsCount.Inc()
 
-	// Pre-generate the MongoDB ID so it can be passed to the OCR worker for
-	// correlation before the document is persisted.
-	photoID := primitive.NewObjectID()
-
-	result, err := b.ocrClient.Process(ctx, photoID.Hex(), body)
 	if err != nil {
 		slog.Error("ocr worker error", "photo_id", photoID.Hex(), "err", err)
 		// Fall back to saving the image with empty OCR data rather than

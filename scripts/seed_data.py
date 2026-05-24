@@ -38,8 +38,6 @@ def generate_random_photo():
     prenume = random.choice(NAMES)
     confidence = round(random.uniform(0.72, 0.99), 3)
     
-    # Logic for Control Type (Mutual Exclusion usually, but boolean fields allow mix)
-    # We will pick one main type and set it to True
     control_types = ["Angajare", "Periodic", "Adaptare", "Reluare", "Supraveghere", "Alte"]
     selected_control = random.choice(control_types)
     
@@ -50,9 +48,7 @@ def generate_random_photo():
     control_supraveghere = selected_control == "Supraveghere"
     control_alte = selected_control == "Alte"
 
-    # Logic for Aviz (Opinion)
     aviz_types = ["APT", "APT Conditionat", "Inapt Temporar", "Inapt"]
-    # Weight random choice towards APT (common)
     selected_aviz = random.choices(aviz_types, weights=[70, 15, 10, 5], k=1)[0]
     
     aviz_apt = selected_aviz == "APT"
@@ -81,7 +77,7 @@ def generate_random_photo():
         "loc_de_munca": "Bucuresti",
         "doctor_name": random.choice(DOCTORS),
         
-        "tip_control": f"Control {selected_control}", # Helper string field
+        "tip_control": f"Control {selected_control}",
         "control_angajare": control_angajare,
         "control_periodic": control_periodic,
         "control_adaptare": control_adaptare,
@@ -257,12 +253,53 @@ def seed_data():
     try:
         client = pymongo.MongoClient(MONGO_URI)
         db = client[DB_NAME]
-        collection = db[COLLECTION_NAME]
         
-        current_count = collection.count_documents({})
-        print(f"Current document count: {current_count}")
+        print("Seeding Users...")
+        users_col = db["users"]
+        users_col.delete_many({})
+        users_col.insert_many(get_users())
+        print(f"Inserted {users_col.count_documents({})} users.")
+
+        print("Seeding Photos/Records...")
+        photos_col = db["photos"]
+        photos_col.delete_many({})
+        records = [generate_random_photo() for _ in range(count)]
+        photos_col.insert_many(records)
+        print(f"Inserted {photos_col.count_documents({})} photo records.")
         
-        records = [generate_random_photo() for _ in range(15)]
+        # Patients collection based on photos
+        print("Seeding Patients...")
+        patients_col = db["patients"]
+        patients_col.delete_many({})
+        patients = []
+        for r in records:
+            patients.append({
+                "name": f"{r['nume']} {r['prenume']}",
+                "cnp": r['cnp'],
+                "cnp_hash": str(hash(r['cnp'])),
+                "dob": r['cnp'][1:7],  # rough extraction for demo
+                "created_at": r['timestamp']
+            })
+        patients_col.insert_many(patients)
+        print(f"Inserted {patients_col.count_documents({})} patients.")
+
+        # Audit log collection
+        print("Seeding Audit Log...")
+        audit_col = db["audit_log"]
+        audit_col.delete_many({})
+        audit_logs = []
+        for i in range(5):
+            audit_logs.append({
+                "ts": datetime.now() - timedelta(minutes=random.randint(1, 60)),
+                "actor_id": "admin@medsec.ro",
+                "actor_ip": "127.0.0.1",
+                "action": "READ_REPORT",
+                "resource_type": "report",
+                "resource_id": "r1",
+                "details": "Viewed compliance report"
+            })
+        audit_col.insert_many(audit_logs)
+        print(f"Inserted {audit_col.count_documents({})} audit logs.")
         
         result = collection.insert_many(records)
         print(f"Successfully inserted {len(result.inserted_ids)} records!")
@@ -270,10 +307,18 @@ def seed_data():
         
         new_count = collection.count_documents({})
         print(f"New document count: {new_count}")
+        print("✅ Data seeded successfully!")
         
     except Exception as e:
         print(f"An error occurred: {e}")
-        print("Ensure 'pymongo' is installed: pip install pymongo")
+        print("Ensure 'pymongo' and 'bcrypt' are installed: pip install pymongo bcrypt")
 
 if __name__ == "__main__":
-    seed_data()
+    import sys
+    count = 15
+    if len(sys.argv) > 1:
+        try:
+            count = int(sys.argv[1])
+        except ValueError:
+            pass
+    seed_data(count)
