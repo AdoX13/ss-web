@@ -1,8 +1,18 @@
 @import "tailwindcss";
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* Tailwind v4: enable class-based dark mode for a manual toggle (the default
+   in v4 is the `prefers-color-scheme` media query). The `.dark` class is set
+   on <html> by ThemeProvider. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Smooth the light/dark transition on the page chrome. */
+html {
+  background-color: #ffffff;
+}
+html.dark {
+  background-color: #0f172a; /* slate-900 */
+  color-scheme: dark;
+}
 
 @keyframes scaleIn {
   0% {
@@ -15,7 +25,6 @@
   }
 }
 
-/* Add the animation to Tailwind classes */
 @layer utilities {
   .animate-scaleIn {
     animation: scaleIn 0.2s ease-out forwards;
