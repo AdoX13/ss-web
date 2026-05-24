@@ -1,0 +1,71 @@
+# syntax=docker/dockerfile:1.6
+#
+# ocr-worker — sandboxed Tesseract microservice.
+#
+# Build stage installs Tesseract + leptonica + dev headers (gosseract is
+# a CGO binding). Final stage is a distroless nonroot image with only
+# the libraries needed at runtime. Designed to be launched with:
+#
+#   runtime: runsc                  (gVisor)
+#   network_mode: none
+#   read_only: true
+#   cap_drop: [ALL]
+#   security_opt: [no-new-privileges]
+#
+# See docs/architecture/ocr_sandbox.md.
+
+FROM golang:1.24-bookworm AS build
+WORKDIR /src
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libtesseract-dev \
+        libleptonica-dev \
+        tesseract-ocr-eng \
+        tesseract-ocr-ron \
+        pkg-config \
+        ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY go.mod go.sum* ./
+RUN go mod download
+
+COPY . .
+
+# Build flags:
+#  -trimpath           strip absolute build paths
+#  -buildvcs=false     reproducible build
+#  -ldflags '-s -w'    strip debug info
+#  CGO_ENABLED=1       required by gosseract
+ARG ENGINE_VERSION=tesseract-5.x
+RUN CGO_ENABLED=1 GOOS=linux \
+    go build \
+        -trimpath \
+        -buildvcs=false \
+        -ldflags "-s -w -X main.EngineVersion=${ENGINE_VERSION}" \
+        -o /out/ocr-worker .
+
+# --- Runtime stage ---
+# distroless/cc-debian12 includes glibc and minimal C runtime that
+# libtesseract/libleptonica need. The :nonroot variant runs as UID 65532.
+FROM gcr.io/distroless/cc-debian12:nonroot AS runtime
+
+# Bundle just the shared libs Tesseract needs. We can't apt-get inside
+# distroless; we copy from the build stage instead.
+COPY --from=build /usr/lib/x86_64-linux-gnu/libtesseract.so* /usr/lib/x86_64-linux-gnu/
+COPY --from=build /usr/lib/x86_64-linux-gnu/liblept.so*       /usr/lib/x86_64-linux-gnu/
+COPY --from=build /usr/lib/x86_64-linux-gnu/libleptonica.so*  /usr/lib/x86_64-linux-gnu/
+COPY --from=build /usr/share/tesseract-ocr/                   /usr/share/tesseract-ocr/
+
+# Tesseract looks here by default for trained data.
+ENV TESSDATA_PREFIX=/usr/share/tesseract-ocr/5/tessdata/
+
+COPY --from=build /out/ocr-worker /usr/local/bin/ocr-worker
+
+USER nonroot:nonroot
+
+EXPOSE 0
+# No port exposed — IPC is via the /run/ocr/ocr.sock Unix socket
+# mounted at runtime by Docker Compose.
+
+ENTRYPOINT ["/usr/local/bin/ocr-worker"]
+CMD ["--socket=/run/ocr/ocr.sock", "--pool=4"]
