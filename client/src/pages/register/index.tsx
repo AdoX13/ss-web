@@ -1,6 +1,16 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { apiFetch } from '../../utils/api';
+import { useNavigate, Link } from 'react-router-dom';
+import { apiFetch, ApiError } from '../../utils/api';
+import {
+  card,
+  heading,
+  label,
+  input,
+  errorBanner,
+  successBanner,
+} from '../../theme/styles';
+
+const MIN_PASSWORD_LENGTH = 8;
 
 const RegisterPage: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -14,98 +24,120 @@ const RegisterPage: React.FC = () => {
     e.preventDefault();
     setError(null);
     setSuccess(null);
+
+    // Mirror the backend rule (handoff §1.1) for instant client feedback.
+    if (password.length < MIN_PASSWORD_LENGTH) {
+      setError(`Password must be at least ${MIN_PASSWORD_LENGTH} characters.`);
+      return;
+    }
+
     setLoading(true);
-    
     try {
-      const response = await apiFetch('/register', {
+      const res = await apiFetch('/api/v1/auth/register', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
       });
-      
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || 'Registration failed. Please try again.');
+      if (!res.ok) {
+        const message = (await res.text()).trim();
+        if (res.status === 409) {
+          throw new ApiError(409, 'That email is already registered.');
+        }
+        throw new ApiError(res.status, message || 'Registration failed.');
       }
-      
-      // Show success message
-      setSuccess('Registration successful! Redirecting to homepage...');
-      
-      // Redirect after a short delay to allow the user to see the success message
-      setTimeout(() => {
-        navigate('/');
-      }, 2000);
+      setSuccess('Registration successful! Redirecting to login…');
+      setTimeout(() => navigate('/login'), 1500);
     } catch (err) {
-      setError((err as Error).message || 'An error occurred during registration');
-      console.error('Registration error:', err);
+      setError(
+        err instanceof ApiError
+          ? err.message
+          : 'An error occurred during registration. Please try again.',
+      );
     } finally {
       setLoading(false);
     }
   };
 
+  const done = success !== null;
+
   return (
     <div className="flex justify-center items-center min-h-[80vh]">
-      <div className="bg-white p-8 rounded-lg shadow-md w-full max-w-md">
-        <h2 className="text-2xl font-semibold text-sky-700 mb-6 text-center">Register</h2>
-        
+      <div className={`${card} p-8 w-full max-w-md`}>
+        <h2 className={`${heading} mb-6 text-center`}>Register</h2>
+
         {error && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-300 text-red-700 rounded-md">
+          <div className={`mb-4 ${errorBanner}`} role="alert">
             {error}
           </div>
         )}
-        
         {success && (
-          <div className="mb-4 p-3 bg-green-50 border border-green-300 text-green-700 rounded-md">
+          <div className={`mb-4 ${successBanner}`} role="status">
             {success}
           </div>
         )}
-        
-        <form onSubmit={handleSubmit}>
+
+        <form onSubmit={handleSubmit} noValidate>
           <div className="mb-4">
-            <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="email" className={label}>
               Email Address
             </label>
             <input
               id="email"
               type="email"
+              autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent"
+              className={input}
               required
-              disabled={loading || success !== null}
+              disabled={loading || done}
             />
           </div>
-          
+
           <div className="mb-6">
-            <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="password" className={label}>
               Password
             </label>
             <input
               id="password"
               type="password"
+              autoComplete="new-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent"
+              className={input}
               required
-              disabled={loading || success !== null}
+              minLength={MIN_PASSWORD_LENGTH}
+              disabled={loading || done}
+              aria-describedby="password-hint"
             />
-          </div>
-          
-          <div className="flex justify-center">
-            <button 
-              type="submit"
-              className="px-6 py-3 text-lg bg-sky-600 text-white hover:bg-sky-700 inline-flex items-center justify-center rounded-md font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-sky-400 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
-              disabled={loading || success !== null}
+            <p
+              id="password-hint"
+              className="mt-1 text-xs text-gray-500 dark:text-gray-400"
             >
-              {loading ? 'Registering...' : 'Register'}
-            </button>
+              At least {MIN_PASSWORD_LENGTH} characters.
+            </p>
           </div>
+
+          <button
+            type="submit"
+            className="w-full px-6 py-3 text-lg bg-sky-600 text-white hover:bg-sky-700 inline-flex items-center justify-center rounded-md font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-sky-400 focus:ring-offset-2 dark:focus:ring-offset-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={loading || done}
+          >
+            {loading ? 'Registering…' : 'Register'}
+          </button>
         </form>
+
+        <p className="mt-6 text-center text-sm text-gray-600 dark:text-gray-400">
+          Already have an account?{' '}
+          <Link
+            to="/login"
+            className="text-sky-600 dark:text-sky-400 hover:underline font-medium"
+          >
+            Login
+          </Link>
+        </p>
       </div>
     </div>
   );
 };
 
-export default RegisterPage; 
+export default RegisterPage;

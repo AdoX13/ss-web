@@ -1,80 +1,106 @@
-// TODO: Implement authentication - See docs/AUTH_IMPLEMENTATION.md
-// This file currently bypasses authentication. To implement real auth:
-// 1. Remove the auto-login in useEffect
-// 2. Validate JWT tokens from the backend
-// 3. Store and use real tokens for API requests
+// Real JWT authentication context. Replaces the development stub that
+// auto-logged-in as a guest admin. Tokens live in localStorage (see
+// utils/api.ts `tokenStore`); this context exposes the derived session state
+// (email, role, helpers) to the React tree.
 
-import React, { createContext, useState, useContext, useEffect } from 'react';
+import React, {
+  createContext,
+  useState,
+  useContext,
+  useEffect,
+  useCallback,
+} from 'react';
+import { apiFetch, tokenStore } from '../utils/api';
+import type { LoginResponse, Role } from '../types/auth';
+import { isRole, roleSatisfies } from '../types/auth';
 
 interface AuthContextType {
   isLoggedIn: boolean;
-  token: string | null;
   loading: boolean;
+  email: string | null;
+  role: Role | null;
   isAdmin: boolean;
-  login: (token: string) => void;
-  logout: () => void;
+  /** Access token, exposed for backward compatibility with legacy pages. */
+  token: string | null;
+  /** True if the current role is one of the provided roles. */
+  hasRole: (...roles: Role[]) => boolean;
+  login: (data: LoginResponse) => void;
+  logout: () => Promise<void>;
 }
-
-
 
 const AuthContext = createContext<AuthContextType>({
   isLoggedIn: false,
-  token: null,
   loading: true,
-  isAdmin: true,
-  login: () => { },
-  logout: () => { },
+  email: null,
+  role: null,
+  isAdmin: false,
+  token: null,
+  hasRole: () => false,
+  login: () => {},
+  logout: async () => {},
 });
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useAuth = () => useContext(AuthContext);
 
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
+  const [email, setEmail] = useState<string | null>(null);
+  const [role, setRole] = useState<Role | null>(null);
   const [token, setToken] = useState<string | null>(null);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [isAdmin, setIsAdmin] = useState(false);
 
-  // TODO: Implement real authentication
-  // Currently auto-logging in as guest (no real authentication)
+  // Restore the session from storage on first load.
   useEffect(() => {
-    // Auto-login as guest for development (authentication not implemented)
-    setToken('guest-placeholder-token');
-    setIsLoggedIn(true);
-    setIsAdmin(true);
-    setLoading(false);
-
-    // Original implementation (uncomment when implementing real auth):
-    /*
-    const storedToken = localStorage.getItem('token');
-    if (storedToken) {
-      setToken(storedToken);
-      setIsLoggedIn(true);
-      setIsAdmin(true);
+    const access = tokenStore.getAccess();
+    const storedRole = tokenStore.getRole();
+    if (access && isRole(storedRole)) {
+      setToken(access);
+      setRole(storedRole);
+      setEmail(tokenStore.getEmail());
     }
     setLoading(false);
-    */
   }, []);
 
-  const login = (newToken: string) => {
-    localStorage.setItem('token', newToken);
-    setToken(newToken);
-    setIsLoggedIn(true);
+  const login = useCallback((data: LoginResponse) => {
+    tokenStore.setSession({
+      accessToken: data.access_token,
+      refreshToken: data.refresh_token,
+      email: data.email,
+      role: data.role,
+    });
+    setToken(data.access_token);
+    setEmail(data.email);
+    setRole(data.role);
+  }, []);
 
-    setIsAdmin(true);
-  };
-
-  const logout = () => {
-    localStorage.removeItem('token');
+  const logout = useCallback(async () => {
+    try {
+      // Best-effort: revoke refresh tokens server-side (handoff §1.4).
+      await apiFetch('/api/v1/auth/logout', { method: 'POST' });
+    } catch {
+      // Network failure shouldn't trap the user in a logged-in state.
+    }
+    tokenStore.clear();
     setToken(null);
-    setIsLoggedIn(false);
-    setIsAdmin(false);
-  };
+    setEmail(null);
+    setRole(null);
+  }, []);
 
-  const value = {
-    token,
-    isLoggedIn,
+  const hasRole = useCallback(
+    (...roles: Role[]) => roleSatisfies(role, roles),
+    [role],
+  );
+
+  const value: AuthContextType = {
+    isLoggedIn: token !== null,
     loading,
-    isAdmin,
+    email,
+    role,
+    isAdmin: role === 'admin',
+    token,
+    hasRole,
     login,
     logout,
   };
@@ -82,4 +108,4 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
-export default AuthContext; 
+export default AuthContext;
