@@ -96,10 +96,18 @@ routes verified directly in `server/routes/`).
 
 ### Next
 - Phase F — Camera capture page: **blocked** on `POST /api/v1/documents`
-  (not implemented) and on P3's page. See contract issues doc.
+  (not implemented) and on P3's page.
 - Optional: run Lighthouse a11y (needs Chrome + lighthouse CLI) to confirm ≥ 90;
   axe (WCAG 2 A/AA) is already clean via the E2E suite.
 - Generate the API client from `server/docs/openapi.yaml` once P1 commits it.
 - Consider deleting the stale `package-lock.json` (we use yarn).
 
-See `docs/development/frontend_p4_contract_issues.md` for backend asks.
+### Backend asks (track separately)
+A few cross-team items came up while building against the live backend
+(raise with P1 directly):
+- `/ws/review` authenticates via the `Authorization` header, which browsers
+  can't set on a WebSocket — the client sends `?token=` and falls back to
+  polling.
+- `GET /api/v1/reports/{name}` returns capitalised JSON keys; the client
+  normalises both shapes.
+- No `POST /api/v1/documents` endpoint yet (blocks Phase F camera upload).
