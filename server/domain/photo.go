@@ -44,6 +44,10 @@ type Photo struct {
 	Recomandari            string    `json:"recomandari" bson:"recomandari"`
 	Data                   time.Time `json:"data" bson:"data"`
 	DataUrmExaminari       time.Time `json:"data_urm_examinari" bson:"data_urm_examinari"`
+
+	// OCR quality metadata (populated by the sandboxed ocr-worker)
+	OverallConfidence float64 `json:"overall_confidence" bson:"overall_confidence"`
+	NeedsReview       bool    `json:"needs_review" bson:"needs_review"`
 }
 
 type PhotoRepository interface {

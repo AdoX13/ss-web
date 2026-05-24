@@ -1,10 +1,11 @@
 package main
 
 import (
-	"crypto/tls"
-    "crypto/x509"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -12,110 +13,143 @@ import (
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
-	"github.com/otiai10/gosseract/v2"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 
+	"mqtt-streaming-server/audit"
+	"mqtt-streaming-server/auth"
 	"mqtt-streaming-server/broker"
+	"mqtt-streaming-server/domain"
+	"mqtt-streaming-server/evidence"
+	"mqtt-streaming-server/ocr"
+	"mqtt-streaming-server/reports"
+	"mqtt-streaming-server/repository"
 	"mqtt-streaming-server/routes"
 )
 
 // TODO: Implement mTLS security
 // See docs/SECURITY_IMPLEMENTATION.md for instructions on how to configure TLS
 func NewTLSConfig() *tls.Config {
-    // Încărcarea certificatului CA
-    certpool := x509.NewCertPool()
-    pemCerts, err := os.ReadFile("/run/secrets/ca.crt")
-    if err != nil {
-        panic(err)
-    }
-    certpool.AppendCertsFromPEM(pemCerts)
+	certpool := x509.NewCertPool()
+	pemCerts, err := os.ReadFile("/run/secrets/ca.crt")
+	if err != nil {
+		panic(err)
+	}
+	certpool.AppendCertsFromPEM(pemCerts)
 
-    // Încărcarea certificatului de client
-    cert, err := tls.LoadX509KeyPair("/run/secrets/web.crt", "/run/secrets/web.key")
-    if err != nil {
-        panic(err)
-    }
+	cert, err := tls.LoadX509KeyPair("/run/secrets/web.crt", "/run/secrets/web.key")
+	if err != nil {
+		panic(err)
+	}
 
-    return &tls.Config{
-        RootCAs:            certpool,
-        ClientCAs:          certpool,
-        Certificates:       []tls.Certificate{cert},
-        InsecureSkipVerify: false,
-    }
+	return &tls.Config{
+		RootCAs:            certpool,
+		ClientCAs:          certpool,
+		Certificates:       []tls.Certificate{cert},
+		InsecureSkipVerify: false,
+	}
 }
 
 func main() {
-	// Connect to MongoDB
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	uri := fmt.Sprintf("mongodb://%s:%s@mongo-db:27017/?authSource=admin", os.Getenv("MONGO_INITDB_ROOT_USERNAME"), os.Getenv("MONGO_INITDB_ROOT_PASSWORD"))
+	uri := fmt.Sprintf("mongodb://%s:%s@mongo-db:27017/?authSource=admin",
+		os.Getenv("MONGO_INITDB_ROOT_USERNAME"),
+		os.Getenv("MONGO_INITDB_ROOT_PASSWORD"),
+	)
 	mongoClient, err := mongo.Connect(ctx, options.Client().ApplyURI(uri))
 	if err != nil {
-		fmt.Println("Failed to connect to MongoDB:", err)
+		slog.Error("failed to connect to MongoDB", "err", err)
 		panic(err)
 	}
 	defer func() {
-		if err := mongoClient.Disconnect(ctx); err != nil {
+		if err := mongoClient.Disconnect(context.Background()); err != nil {
 			panic(err)
 		}
 	}()
 	db := mongoClient.Database("mqtt-streaming-server")
+	slog.Info("connected to MongoDB")
 
-	fmt.Println("Connected to MongoDB!")
+	jwtSecret := jwtSecretFromEnv()
 
-	// mTLS implementation
-	tlsconfig := NewTLSConfig()
+	userRepo := repository.NewUserRepository(db)
+	refreshTokenRepo := repository.NewRefreshTokenRepository(db)
+	reviewItemRepo := repository.NewReviewItemRepository(db)
 
-    opts := mqtt.NewClientOptions()
-    opts.AddBroker("ssl://broker:8883")
-    opts.SetClientID("web").SetTLSConfig(tlsconfig)
+	auditWriter := &audit.Slog{}
+	evidenceChain := &evidence.Noop{}
+	reportRegistry := reports.DefaultRegistry()
 
-	c := make(chan os.Signal, 1)
+	rateLimiter := auth.NewRateLimiter(5, 10)
 
-	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	reviewNotifyCh := make(chan *domain.ReviewItem, 64)
+	hub := routes.NewReviewHub(reviewNotifyCh)
+	go hub.Run()
 
-	ocrClient := gosseract.NewClient()
-	ocrClient.SetLanguage("eng", "ron")
+	socketPath := os.Getenv("OCR_SOCKET_PATH")
+	if socketPath == "" {
+		socketPath = "/run/ocr/ocr.sock"
+	}
+	ocrClient := ocr.NewUnixSocketClient(socketPath)
 	defer ocrClient.Close()
-	brokerHandler := broker.NewBrokerHandler(db, ocrClient)
 
-	// opts := mqtt.NewClientOptions()
-	// opts.AddBroker("tcp://broker:1883")
-	// opts.SetClientID("web")
+	tlsconfig := NewTLSConfig()
+	opts := mqtt.NewClientOptions()
+	opts.AddBroker("ssl://broker:8883")
+	opts.SetClientID("web").SetTLSConfig(tlsconfig)
 
-	// Start the connection
-	client := mqtt.NewClient(opts)
-	if token := client.Connect(); token.Wait() && token.Error() != nil {
+	mqttClient := mqtt.NewClient(opts)
+	if token := mqttClient.Connect(); token.Wait() && token.Error() != nil {
 		panic(token.Error())
 	}
 
-	// Subscribe to images topic
-	if token := client.Subscribe("ssproject/images/#", 0, brokerHandler.HandlePhoto); token.Wait() && token.Error() != nil {
-		fmt.Println(token.Error())
+	brokerHandler := broker.NewBrokerHandler(db, ocrClient, reviewNotifyCh)
+
+	if token := mqttClient.Subscribe("ssproject/images/#", 0, brokerHandler.HandlePhoto); token.Wait() && token.Error() != nil {
+		slog.Error("subscribe failed", "topic", "ssproject/images/#", "err", token.Error())
+		os.Exit(1)
+	}
+	if token := mqttClient.Subscribe("register/#", 0, brokerHandler.RegisterDevice); token.Wait() && token.Error() != nil {
+		slog.Error("subscribe failed", "topic", "register/#", "err", token.Error())
+		os.Exit(1)
+	}
+	if token := mqttClient.Subscribe("device/id/#", 0, brokerHandler.DisconnectDevice); token.Wait() && token.Error() != nil {
+		slog.Error("subscribe failed", "topic", "device/id/#", "err", token.Error())
 		os.Exit(1)
 	}
 
-	if token := client.Subscribe("register/#", 0, brokerHandler.RegisterDevice); token.Wait() && token.Error() != nil {
-		fmt.Println(token.Error())
-		os.Exit(1)
-	}
+	handler := routes.InitRoutes(&routes.Config{
+		DB:               db,
+		MQTTClient:       mqttClient,
+		JWTSecret:        jwtSecret,
+		UserRepo:         userRepo,
+		RefreshTokenRepo: refreshTokenRepo,
+		ReviewItemRepo:   reviewItemRepo,
+		AuditWriter:      auditWriter,
+		EvidenceChain:    evidenceChain,
+		ReportRegistry:   reportRegistry,
+		ReviewHub:        hub,
+		AuthRateLimiter:  rateLimiter,
+	})
 
-	if token := client.Subscribe("device/id/#", 0, brokerHandler.DisconnectDevice); token.Wait() && token.Error() != nil {
-		fmt.Println(token.Error())
-		os.Exit(1)
-	}
-
-	// Initialize user routes
-	handler := routes.InitRoutes(db, client)
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
 
 	go func() {
-		fmt.Println("Starting HTTP server on port 8080...")
+		slog.Info("starting HTTP server", "port", 8080)
 		if err := http.ListenAndServe(":8080", handler); err != nil {
 			panic(err)
 		}
 	}()
 
-	<-c
+	<-sig
+	slog.Info("shutting down")
+}
+
+func jwtSecretFromEnv() string {
+	if s := os.Getenv("JWT_SECRET"); s != "" {
+		return s
+	}
+	return "dev-secret-change-in-production"
 }

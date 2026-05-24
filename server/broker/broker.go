@@ -8,35 +8,43 @@ import (
 	"image"
 	_ "image/jpeg"
 	_ "image/png"
+	"log/slog"
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
-	"github.com/otiai10/gosseract/v2"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 
 	"mqtt-streaming-server/domain"
+	"mqtt-streaming-server/ocr"
 	"mqtt-streaming-server/repository"
+	"mqtt-streaming-server/routes"
 	"mqtt-streaming-server/utils"
 )
 
 type BrokerHandler struct {
-	photoRepository  domain.PhotoRepository
-	deviceRepository domain.DeviceRepository
-	ocrClient        *gosseract.Client
+	photoRepository      domain.PhotoRepository
+	deviceRepository     domain.DeviceRepository
+	reviewItemRepository domain.ReviewItemRepository
+	ocrClient            ocr.Client
+	reviewNotifyCh       chan<- *domain.ReviewItem // may be nil
 }
 
-func NewBrokerHandler(db *mongo.Database, ocrClient *gosseract.Client) BrokerHandler {
+// NewBrokerHandler creates a broker handler. reviewNotifyCh receives new
+// ReviewItems for WebSocket broadcast; pass nil to disable notifications.
+func NewBrokerHandler(db *mongo.Database, ocrClient ocr.Client, reviewNotifyCh chan<- *domain.ReviewItem) BrokerHandler {
 	return BrokerHandler{
-		photoRepository:  repository.NewPhotoRepository(db),
-		deviceRepository: repository.NewDeviceRepository(db),
-		ocrClient:        ocrClient,
+		photoRepository:      repository.NewPhotoRepository(db),
+		deviceRepository:     repository.NewDeviceRepository(db),
+		reviewItemRepository: repository.NewReviewItemRepository(db),
+		ocrClient:            ocrClient,
+		reviewNotifyCh:       reviewNotifyCh,
 	}
 }
 
 func (b BrokerHandler) HandlePhoto(_ mqtt.Client, msg mqtt.Message) {
 	topic := msg.Topic()
 	var deviceID string
-	// topic is ssproject/images/device_id or just ssproject/images
 	if topic == "ssproject/images" {
 		deviceID = "camera_stream"
 	} else if len(topic) > len("ssproject/images/") {
@@ -46,122 +54,224 @@ func (b BrokerHandler) HandlePhoto(_ mqtt.Client, msg mqtt.Message) {
 	}
 
 	ctx := context.Background()
-	fmt.Println("Received message on topic:", msg.Topic())
+	slog.Info("received photo", "topic", msg.Topic())
 
-	// get registered device
 	device, err := b.deviceRepository.GetByID(ctx, deviceID)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
-			fmt.Printf("Device ID not found: %s. Auto-registering...\n", deviceID)
-			// Auto-register the device
+			slog.Info("auto-registering unknown device", "device_id", deviceID)
 			newDevice := &domain.Device{
 				DeviceID:     deviceID,
 				DeviceName:   "Unknown Device (" + deviceID + ")",
 				DeviceStatus: "active",
 			}
 			if err := b.deviceRepository.Save(ctx, newDevice); err != nil {
-				fmt.Printf("Failed to auto-register device: %v\n", err)
+				slog.Error("failed to auto-register device", "device_id", deviceID, "err", err)
 				return
 			}
 			device = newDevice
 		} else {
-			fmt.Printf("Failed to check device ID: %v\n", err)
+			slog.Error("failed to look up device", "device_id", deviceID, "err", err)
 			return
 		}
 	}
-	fmt.Printf("Received photo from device: %s\n", device.DeviceName)
+	slog.Info("processing photo", "device", device.DeviceName)
+
 	body := msg.Payload()
 	_, imageType, err := image.DecodeConfig(bytes.NewReader(body))
 	if err != nil {
-		fmt.Printf("Failed to decode image: %v\n", err)
+		slog.Error("failed to decode image header", "err", err)
 		return
 	}
-	fmt.Printf("Image type: %s\n", imageType)
 
-	// Extract text from image
-	text, err := b.extractTextFromImage(body)
+	routes.IncrMQTTMessages()
+	routes.IncrOCRRequests()
+
+	// Pre-generate the MongoDB ID so it can be passed to the OCR worker for
+	// correlation before the document is persisted.
+	photoID := primitive.NewObjectID()
+
+	result, err := b.ocrClient.Process(ctx, photoID.Hex(), body)
 	if err != nil {
-		fmt.Printf("Failed to extract text from image: %v\n", err)
-		text = "OCR failed"
+		slog.Error("ocr worker error", "photo_id", photoID.Hex(), "err", err)
+		// Fall back to saving the image with empty OCR data rather than
+		// dropping the message entirely.
+		result = nil
 	}
-	
-	// Try to extract structured medical data
-	var medicalData *utils.MedicalData
-	if utils.IsMedicalCertificate(text) {
-		medicalData = utils.ParseMedicalCertificate(text)
-		if medicalData != nil {
-			fmt.Printf("Extracted medical data: %+v\n", medicalData)
+
+	photo := b.buildPhoto(photoID, deviceID, imageType, result)
+
+	if err := b.photoRepository.Save(ctx, photo); err != nil {
+		slog.Error("failed to save photo", "photo_id", photoID.Hex(), "err", err)
+		return
+	}
+
+	if result != nil && result.NeedsReview {
+		b.createReviewItems(ctx, photoID, result)
+	}
+
+	keyName := fmt.Sprintf("photos/%d.%s", photo.Timestamp.Unix(), imageType)
+	if err := utils.SaveToLocal(body, keyName); err != nil {
+		slog.Error("failed to save photo locally", "key", keyName, "err", err)
+	}
+}
+
+// buildPhoto maps an OCR result (may be nil on worker error) onto a Photo.
+func (b BrokerHandler) buildPhoto(id primitive.ObjectID, deviceID, imageType string, result *ocr.Result) *domain.Photo {
+	photo := &domain.Photo{
+		ID:        id,
+		ImageType: imageType,
+		Timestamp: time.Now().UTC(),
+		DeviceID:  deviceID,
+	}
+	if result == nil {
+		photo.Text = "OCR unavailable"
+		return photo
+	}
+
+	photo.Text = result.RawText
+	photo.OverallConfidence = result.OverallConfidence
+	photo.NeedsReview = result.NeedsReview
+
+	f := result.Fields
+	if f.PatientName != nil && f.PatientName.Value != nil {
+		photo.Nume = *f.PatientName.Value
+	}
+	if f.PatientCNP != nil && f.PatientCNP.Value != nil {
+		photo.CNP = *f.PatientCNP.Value
+	}
+	if f.Profession != nil && f.Profession.Value != nil {
+		photo.ProfesieFunctie = *f.Profession.Value
+	}
+	if f.Workplace != nil && f.Workplace.Value != nil {
+		photo.LocDeMunca = *f.Workplace.Value
+	}
+	if f.ControlType != nil && f.ControlType.Value != nil {
+		photo.TipControl = *f.ControlType.Value
+		photo.ControlAngajare = *f.ControlType.Value == "Angajare"
+		photo.ControlPeriodic = *f.ControlType.Value == "Periodic"
+		photo.ControlAdaptare = *f.ControlType.Value == "Adaptare"
+		photo.ControlReluare = *f.ControlType.Value == "Reluare"
+		photo.ControlSupraveghere = *f.ControlType.Value == "Supraveghere"
+		photo.ControlAlte = *f.ControlType.Value == "Alte"
+	}
+	if f.MedicalOpinion != nil && f.MedicalOpinion.Value != nil {
+		photo.AvizMedical = *f.MedicalOpinion.Value
+		photo.AvizApt = *f.MedicalOpinion.Value == "APT"
+		photo.AvizAptConditionat = *f.MedicalOpinion.Value == "APT Condiționat"
+		photo.AvizInaptTemporar = *f.MedicalOpinion.Value == "Inapt Temporar"
+		photo.AvizInapt = *f.MedicalOpinion.Value == "Inapt"
+	}
+	if f.ExamDate != nil && f.ExamDate.Value != nil {
+		if t, err := parseRomanianDate(*f.ExamDate.Value); err == nil {
+			photo.Data = t
 		}
 	}
-	
-	// UTC timestamp
-	timestamp := time.Now().UTC()
-	
-	// Create photo with flattened medical data
-	photo := &domain.Photo{
-		ImageType: imageType,
-		Timestamp: timestamp,
-		DeviceID:  deviceID,
-		Text:      text,
+	if f.ExpirationDate != nil && f.ExpirationDate.Value != nil {
+		if t, err := parseRomanianDate(*f.ExpirationDate.Value); err == nil {
+			photo.DataUrmExaminari = t
+		}
 	}
-	
-	// Copy medical data fields directly to photo (flattened)
-	if medicalData != nil {
-		photo.UnitateMedicala = medicalData.UnitateMedicala
-		photo.AdresaUnitateMedicala = medicalData.AdresaUnitateMedicala
-		photo.TelefonUnitateMedicala = medicalData.TelefonUnitateMedicala
-		photo.NumarFisa = medicalData.NumarFisa
-		photo.SocietateUnitate = medicalData.SocietateUnitate
-		photo.AdresaAngajator = medicalData.AdresaAngajator
-		photo.TelefonAngajator = medicalData.TelefonAngajator
-		photo.Nume = medicalData.Nume
-		photo.Prenume = medicalData.Prenume
-		photo.CNP = medicalData.CNP
-		photo.ProfesieFunctie = medicalData.ProfesieFunctie
-		photo.LocDeMunca = medicalData.LocDeMunca
-		photo.TipControl = medicalData.TipControl
-		photo.ControlAngajare = medicalData.ControlAngajare
-		photo.ControlPeriodic = medicalData.ControlPeriodic
-		photo.ControlAdaptare = medicalData.ControlAdaptare
-		photo.ControlReluare = medicalData.ControlReluare
-		photo.ControlSupraveghere = medicalData.ControlSupraveghere
-		photo.ControlAlte = medicalData.ControlAlte
+	if f.DoctorName != nil && f.DoctorName.Value != nil {
+		// DoctorName has no flat field in the legacy Photo; store in Recomandari
+		// only as a transitional measure until the schema is migrated. The proper
+		// destination is the medical_records collection (P6's domain).
+		_ = f.DoctorName
+	}
+	return photo
+}
 
-		photo.AvizMedical = medicalData.AvizMedical
-		photo.AvizApt = medicalData.AvizApt
-		photo.AvizAptConditionat = medicalData.AvizAptConditionat
-		photo.AvizInaptTemporar = medicalData.AvizInaptTemporar
-		photo.AvizInapt = medicalData.AvizInapt
+// createReviewItems writes one review_items entry per field whose confidence
+// is below the review threshold or whose value is nil.
+func (b BrokerHandler) createReviewItems(ctx context.Context, photoID primitive.ObjectID, result *ocr.Result) {
+	type entry struct {
+		name  string
+		value *string
+		conf  float64
+	}
+	f := result.Fields
+	strPtr := func(ef *ocr.EnumField) *string {
+		if ef == nil {
+			return nil
+		}
+		return ef.Value
+	}
+	entries := []entry{
+		{"patient_name", fieldVal(f.PatientName), fieldConf(f.PatientName)},
+		{"patient_cnp", fieldVal(f.PatientCNP), fieldConf(f.PatientCNP)},
+		{"profession", fieldVal(f.Profession), fieldConf(f.Profession)},
+		{"workplace", fieldVal(f.Workplace), fieldConf(f.Workplace)},
+		{"control_type", strPtr(f.ControlType), enumConf(f.ControlType)},
+		{"medical_opinion", strPtr(f.MedicalOpinion), enumConf(f.MedicalOpinion)},
+		{"exam_date", fieldVal(f.ExamDate), fieldConf(f.ExamDate)},
+		{"expiration_date", fieldVal(f.ExpirationDate), fieldConf(f.ExpirationDate)},
+		{"doctor_name", fieldVal(f.DoctorName), fieldConf(f.DoctorName)},
+	}
+	now := time.Now().UTC()
+	for _, e := range entries {
+		if e.value != nil && e.conf >= ocr.OverallConfidenceReviewThreshold {
+			continue
+		}
+		item := &domain.ReviewItem{
+			ImageID:            photoID,
+			FieldName:          e.name,
+			OriginalValue:      e.value,
+			OriginalConfidence: e.conf,
+			Status:             domain.ReviewItemPending,
+			CreatedAt:          now,
+		}
+		if err := b.reviewItemRepository.Save(ctx, item); err != nil {
+			slog.Error("failed to save review item", "photo_id", photoID.Hex(), "field", e.name, "err", err)
+		} else {
+			if b.reviewNotifyCh != nil {
+				select {
+				case b.reviewNotifyCh <- item:
+				default:
+				}
+			}
+			routes.IncrReviewItems()
+		}
+	}
+}
 
-		photo.Recomandari = medicalData.Recomandari
-		photo.Data = medicalData.Data
-		photo.DataUrmExaminari = medicalData.DataUrmExaminari
+func fieldVal(f *ocr.Field) *string {
+	if f == nil {
+		return nil
 	}
-	
-	err = b.photoRepository.Save(ctx, photo)
-	if err != nil {
-		fmt.Printf("Failed to insert photo into MongoDB: %v\n", err)
-		return
+	return f.Value
+}
+
+func fieldConf(f *ocr.Field) float64 {
+	if f == nil {
+		return 0
 	}
-	// Save photo locally
-	keyName := fmt.Sprintf("photos/%d.%s", timestamp.Unix(), imageType)
-	if err := utils.SaveToLocal(body, keyName); err != nil {
-		fmt.Printf("Failed to save photo locally: %v\n", err)
-		return
+	return f.Confidence
+}
+
+func enumConf(f *ocr.EnumField) float64 {
+	if f == nil {
+		return 0
 	}
-	fmt.Printf("Photo saved locally with key: %s\n", keyName)
+	return f.Confidence
+}
+
+// parseRomanianDate accepts DD.MM.YYYY and DD/MM/YYYY.
+func parseRomanianDate(s string) (time.Time, error) {
+	for _, layout := range []string{"02.01.2006", "02/01/2006"} {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("unrecognised date format: %q", s)
 }
 
 func (b BrokerHandler) RegisterDevice(_ mqtt.Client, msg mqtt.Message) {
 	topic := msg.Topic()
-	// topic is register/device_id
 	deviceID := topic[len("register/"):]
 	ctx := context.Background()
-	fmt.Println("Received message on topic:", msg.Topic())
+	slog.Info("device registration", "topic", msg.Topic())
 	body := msg.Payload()
-	fmt.Printf("Received device registration: %s\n", body)
 
-	// Parse JSON payload: {"name": "...", "ip": "...", "port": "..."}
 	var deviceName, ipAddress, port string
 	var registration struct {
 		Name string `json:"name"`
@@ -176,14 +286,12 @@ func (b BrokerHandler) RegisterDevice(_ mqtt.Client, msg mqtt.Message) {
 		deviceName = string(body)
 	}
 
-	// Check if device ID already exists
 	_, err := b.deviceRepository.GetByID(ctx, deviceID)
 	if err != nil && err != mongo.ErrNoDocuments {
-		fmt.Printf("Failed to check device ID: %v\n", err)
+		slog.Error("failed to check device", "device_id", deviceID, "err", err)
 		return
 	}
 	if err == mongo.ErrNoDocuments {
-		// Device ID does not exist, insert it
 		err = b.deviceRepository.Save(ctx, &domain.Device{
 			DeviceID:     deviceID,
 			DeviceName:   deviceName,
@@ -193,13 +301,12 @@ func (b BrokerHandler) RegisterDevice(_ mqtt.Client, msg mqtt.Message) {
 			LastSeen:     time.Now().UTC(),
 		})
 		if err != nil {
-			fmt.Printf("Failed to insert device ID: %v\n", err)
+			slog.Error("failed to register device", "device_id", deviceID, "err", err)
 			return
 		}
-		fmt.Printf("Device registered: %s (IP: %s, Port: %s)\n", deviceID, ipAddress, port)
+		slog.Info("device registered", "device_id", deviceID, "ip", ipAddress)
 		return
 	}
-	// Device ID already exists, update it
 	err = b.deviceRepository.Update(ctx, deviceID, &domain.Device{
 		DeviceID:     deviceID,
 		DeviceName:   deviceName,
@@ -209,15 +316,13 @@ func (b BrokerHandler) RegisterDevice(_ mqtt.Client, msg mqtt.Message) {
 		LastSeen:     time.Now().UTC(),
 	})
 	if err != nil {
-		fmt.Printf("Failed to update device ID: %v\n", err)
-		return
+		slog.Error("failed to update device", "device_id", deviceID, "err", err)
 	}
-	fmt.Printf("Device updated: %s (IP: %s, Port: %s)\n", deviceID, ipAddress, port)
+	slog.Info("device updated", "device_id", deviceID)
 }
 
 func (b BrokerHandler) DisconnectDevice(_ mqtt.Client, msg mqtt.Message) {
 	topic := msg.Topic()
-	// topic is device/id/device_id
 	var deviceID string
 	if len(topic) > len("device/id/") {
 		deviceID = topic[len("device/id/"):]
@@ -226,42 +331,27 @@ func (b BrokerHandler) DisconnectDevice(_ mqtt.Client, msg mqtt.Message) {
 	}
 
 	ctx := context.Background()
-	fmt.Println("Received message on topic:", msg.Topic())
 	message := string(msg.Payload())
-	fmt.Printf("Received device disconnection: %s\n", message)
-	
 	if message != "Device Disconnected" {
-		fmt.Printf("Invalid disconnection message: %s\n", message)
 		return
 	}
-	
+
 	device, err := b.deviceRepository.GetByID(ctx, deviceID)
 	if err != nil {
-		// handle error
 		return
 	}
 	if device.DeviceStatus != "active" {
 		return
 	}
-	err = b.deviceRepository.Update(ctx, deviceID, &domain.Device{
+	if err := b.deviceRepository.Update(ctx, deviceID, &domain.Device{
 		DeviceID:     deviceID,
 		DeviceStatus: "inactive",
 		DeviceName:   device.DeviceName,
-	})
-}
-
-func (b BrokerHandler) extractTextFromImage(imageData []byte) (string, error) {
-	// Use the OCR client to extract text from the image
-	b.ocrClient.SetImageFromBytes(imageData)
-	text, err := b.ocrClient.Text()
-	if err != nil {
-		return "", fmt.Errorf("failed to extract text from image: %v", err)
+	}); err != nil {
+		slog.Error("failed to mark device inactive", "device_id", deviceID, "err", err)
 	}
-	return text, nil
 }
 
 func (b BrokerHandler) HandleCommand(_ mqtt.Client, msg mqtt.Message) {
-	fmt.Println("Received command on topic:", msg.Topic())
-	body := string(msg.Payload())
-	fmt.Printf("Command payload: %s\n", body)
+	slog.Info("received command", "topic", msg.Topic(), "payload", string(msg.Payload()))
 }
