@@ -12,13 +12,25 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov'],
-      include: ['src/**/*.{ts,tsx}'],
-      exclude: [
-        'src/**/*.{test,spec}.{ts,tsx}',
-        'src/test/**',
-        'src/main.tsx',
-        'src/vite-env.d.ts',
+      // Unit-coverage scope = the logic layer + reusable components. Page
+      // components and presentational chrome (navbar, buttons, cards, theme
+      // toggle) are exercised by the Playwright E2E suite (see e2e/) across all
+      // four roles, which is the right tool for full-page behaviour.
+      include: [
+        'src/utils/api.ts',
+        'src/utils/fields.ts',
+        'src/utils/format.ts',
+        'src/hooks/**',
+        'src/contexts/**',
+        'src/theme/ThemeContext.tsx',
+        'src/components/ProtectedRoute.tsx',
+        'src/components/AccessDenied/**',
+        'src/components/ConfidenceBadge/**',
+        'src/components/StatusBadge/**',
+        'src/types/auth.ts',
+        'src/types/review.ts',
       ],
+      thresholds: { lines: 75, statements: 75, functions: 75, branches: 75 },
     },
   },
 });
