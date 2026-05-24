@@ -40,7 +40,7 @@ const ReportsPage: React.FC = () => {
               <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-1">
                 {r.description || r.name}
               </h2>
-              <p className="text-xs font-mono text-gray-400 dark:text-gray-500 mb-3">
+              <p className="text-xs font-mono text-gray-500 dark:text-gray-400 mb-3">
                 {r.name}
               </p>
               {r.roles && r.roles.length > 0 ? (
@@ -55,7 +55,7 @@ const ReportsPage: React.FC = () => {
                   ))}
                 </div>
               ) : (
-                <span className="text-xs text-gray-400 dark:text-gray-500">
+                <span className="text-xs text-gray-500 dark:text-gray-400">
                   All roles
                 </span>
               )}

@@ -115,7 +115,7 @@ const ReportDetailPage: React.FC = () => {
       <div className="flex items-center gap-2 mb-2">
         <Link
           to="/reports"
-          className="text-sky-600 dark:text-sky-400 hover:underline text-sm"
+          className="text-sky-700 dark:text-sky-400 hover:underline text-sm"
         >
           ← Reports
         </Link>
@@ -151,7 +151,7 @@ const ReportDetailPage: React.FC = () => {
         <button
           onClick={() => void run()}
           disabled={loading}
-          className="px-4 py-2 bg-sky-600 text-white rounded-md hover:bg-sky-700 transition-colors disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-sky-400"
+          className="px-4 py-2 bg-sky-700 text-white rounded-md hover:bg-sky-800 transition-colors disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-sky-400"
         >
           {loading ? 'Running…' : 'Run'}
         </button>

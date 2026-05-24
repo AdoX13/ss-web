@@ -81,7 +81,7 @@ const LoginPage: React.FC = () => {
 
           <button
             type="submit"
-            className="w-full px-6 py-3 text-lg bg-sky-600 text-white hover:bg-sky-700 inline-flex items-center justify-center rounded-md font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-sky-400 focus:ring-offset-2 dark:focus:ring-offset-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full px-6 py-3 text-lg bg-sky-700 text-white hover:bg-sky-800 inline-flex items-center justify-center rounded-md font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-sky-400 focus:ring-offset-2 dark:focus:ring-offset-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
             disabled={loading}
           >
             {loading ? 'Logging in…' : 'Login'}
@@ -92,7 +92,7 @@ const LoginPage: React.FC = () => {
           Don&rsquo;t have an account?{' '}
           <Link
             to="/register"
-            className="text-sky-600 dark:text-sky-400 hover:underline font-medium"
+            className="text-sky-700 dark:text-sky-400 hover:underline font-medium"
           >
             Register
           </Link>

@@ -39,7 +39,7 @@ const AccessDenied: React.FC<AccessDeniedProps> = ({ requiredRoles }) => (
     </p>
     <Link
       to="/"
-      className="px-4 py-2 bg-sky-600 text-white rounded-md hover:bg-sky-700 transition-colors focus:outline-none focus:ring-2 focus:ring-sky-400 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
+      className="px-4 py-2 bg-sky-700 text-white rounded-md hover:bg-sky-800 transition-colors focus:outline-none focus:ring-2 focus:ring-sky-400 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
     >
       Back to home
     </Link>

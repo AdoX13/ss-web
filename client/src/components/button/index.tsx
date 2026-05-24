@@ -27,11 +27,11 @@ const Button: React.FC<ButtonProps> = ({
   
   // Variant styles (with dark-mode variants)
   const variantStyles = {
-    primary: 'bg-sky-600 text-white hover:bg-sky-700',
+    primary: 'bg-sky-700 text-white hover:bg-sky-800',
     secondary:
       'bg-sky-100 text-sky-800 hover:bg-sky-200 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600',
     outline:
-      'bg-transparent border border-sky-600 text-sky-600 hover:bg-sky-50 dark:border-sky-400 dark:text-sky-300 dark:hover:bg-gray-800',
+      'bg-transparent border border-sky-600 text-sky-700 hover:bg-sky-50 dark:border-sky-400 dark:text-sky-300 dark:hover:bg-gray-800',
   };
   
   return (

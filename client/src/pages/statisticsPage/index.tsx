@@ -142,14 +142,14 @@ const StatisticsPage: React.FC = () => {
         <div className="flex bg-gray-100 dark:bg-gray-700 p-1 rounded-md">
             <button
                 onClick={() => setType('bar')}
-                className={`px-3 py-1 text-sm rounded-sm transition-colors ${currentType === 'bar' ? 'bg-white dark:bg-gray-800 shadow-sm text-sky-600 dark:text-sky-300 font-medium' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+                className={`px-3 py-1 text-sm rounded-sm transition-colors ${currentType === 'bar' ? 'bg-white dark:bg-gray-800 shadow-sm text-sky-700 dark:text-sky-300 font-medium' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
                     }`}
             >
                 Bar
             </button>
             <button
                 onClick={() => setType('pie')}
-                className={`px-3 py-1 text-sm rounded-sm transition-colors ${currentType === 'pie' ? 'bg-white dark:bg-gray-800 shadow-sm text-sky-600 dark:text-sky-300 font-medium' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+                className={`px-3 py-1 text-sm rounded-sm transition-colors ${currentType === 'pie' ? 'bg-white dark:bg-gray-800 shadow-sm text-sky-700 dark:text-sky-300 font-medium' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
                     }`}
             >
                 Pie
@@ -218,7 +218,7 @@ const StatisticsPage: React.FC = () => {
                 </div>
                 <button
                     onClick={fetchData}
-                    className="px-4 py-2 bg-sky-600 text-white rounded-md hover:bg-sky-700 mb-[1px]"
+                    className="px-4 py-2 bg-sky-700 text-white rounded-md hover:bg-sky-800 mb-[1px]"
                 >
                     Refresh
                 </button>

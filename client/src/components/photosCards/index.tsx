@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import fallbackImage from '../../assets/photo-fallback.svg';
 
 interface PhotoCardProps {
@@ -26,6 +26,16 @@ const PhotoCard: React.FC<PhotoCardProps> = ({
   const [isDeleting, setIsDeleting] = useState(false);
 
   const toggleZoom = () => setIsZoomed(!isZoomed);
+
+  // Close the zoom modal with Escape.
+  useEffect(() => {
+    if (!isZoomed) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsZoomed(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isZoomed]);
 
   const handleModalClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (e.target === e.currentTarget) setIsZoomed(false);
@@ -61,6 +71,7 @@ const PhotoCard: React.FC<PhotoCardProps> = ({
               }}
               className="absolute top-2 right-2 bg-red-500 hover:bg-red-600 text-white rounded-full p-2 shadow-lg transition-all duration-200 opacity-80 hover:opacity-100"
               title="Delete photo"
+              aria-label="Delete photo"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -90,7 +101,12 @@ const PhotoCard: React.FC<PhotoCardProps> = ({
         )}
 
         {showDeleteConfirm && (
-          <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black/50 flex items-center justify-center"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Confirm delete photo"
+          >
             <div className="bg-white dark:bg-gray-800 rounded-lg p-4 m-4 shadow-xl">
               <p className="text-gray-800 dark:text-gray-200 mb-4">
                 Delete this photo?
@@ -120,6 +136,9 @@ const PhotoCard: React.FC<PhotoCardProps> = ({
         <div
           className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 transition-opacity duration-300 ease-in-out"
           onClick={handleModalClick}
+          role="dialog"
+          aria-modal="true"
+          aria-label={altText}
         >
           <div className="relative bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-4xl max-h-[90vh] overflow-hidden transform transition-all duration-300 ease-in-out animate-scaleIn">
             <div className="absolute top-0 right-0 left-0 bg-gradient-to-b from-black/50 to-transparent h-20 z-10 flex justify-between items-start p-4">

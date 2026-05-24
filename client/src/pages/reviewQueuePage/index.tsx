@@ -224,7 +224,7 @@ const ReviewQueuePage: React.FC = () => {
           </span>
           <button
             onClick={refresh}
-            className="px-3 py-1.5 bg-sky-600 text-white rounded-md hover:bg-sky-700 transition-colors focus:outline-none focus:ring-2 focus:ring-sky-400"
+            className="px-3 py-1.5 bg-sky-700 text-white rounded-md hover:bg-sky-800 transition-colors focus:outline-none focus:ring-2 focus:ring-sky-400"
           >
             Refresh
           </button>
@@ -273,7 +273,7 @@ const ReviewQueuePage: React.FC = () => {
             type="checkbox"
             checked={polling}
             onChange={(e) => setPolling(e.target.checked)}
-            className="rounded border-gray-300 text-sky-600 focus:ring-sky-500"
+            className="rounded border-gray-300 text-sky-700 focus:ring-sky-500"
           />
           Auto-refresh (8s)
         </label>
@@ -347,10 +347,10 @@ const ReviewQueuePage: React.FC = () => {
                       {item.original_value ? (
                         <span className="font-mono">{item.original_value}</span>
                       ) : (
-                        <span className="italic text-gray-400">empty</span>
+                        <span className="italic text-gray-500 dark:text-gray-400">empty</span>
                       )}
                     </p>
-                    <p className="mt-0.5 text-xs text-gray-400 dark:text-gray-500">
+                    <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
                       Image {item.image_id} · {timeAgo(item.created_at)}
                       {item.reviewer_email ? ` · by ${item.reviewer_email}` : ''}
                       {item.corrected_value

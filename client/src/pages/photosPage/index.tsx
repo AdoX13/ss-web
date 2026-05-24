@@ -355,7 +355,7 @@ const PhotosPage: React.FC = () => {
             <button
               onClick={handleSearch}
               disabled={photosLoading}
-              className="px-4 py-2 bg-sky-600 text-white rounded-md hover:bg-sky-700 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-4 py-2 bg-sky-700 text-white rounded-md hover:bg-sky-800 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {photosLoading ? 'Searching...' : 'Search'}
             </button>
@@ -418,7 +418,12 @@ const PhotosPage: React.FC = () => {
 
       {/* Delete All Confirmation Modal */}
       {deleteAllConfirm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Delete all photos"
+        >
           <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md shadow-xl">
             <h3 className="text-lg font-semibold text-red-600 dark:text-red-400 mb-4">⚠️ Delete All Photos</h3>
             <p className="text-gray-700 dark:text-gray-300 mb-6">Are you sure you want to delete ALL photos? This action cannot be undone.</p>

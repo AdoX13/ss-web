@@ -42,12 +42,13 @@ const Navbar: React.FC<NavbarProps> = ({
           ))}
         </div>
 
-        <h1
-          className="text-lg sm:text-xl font-semibold text-sky-700 dark:text-sky-300 cursor-pointer hover:text-sky-800 dark:hover:text-sky-200 transition-colors whitespace-nowrap"
+        <button
+          type="button"
           onClick={() => navigate('/')}
+          className="text-lg sm:text-xl font-semibold text-sky-700 dark:text-sky-300 hover:text-sky-800 dark:hover:text-sky-200 transition-colors whitespace-nowrap rounded focus:outline-none focus:ring-2 focus:ring-sky-400"
         >
           {title}
-        </h1>
+        </button>
 
         <div className="flex items-center space-x-2">
           {user && (

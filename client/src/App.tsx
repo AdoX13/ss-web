@@ -72,15 +72,21 @@ const Layout = () => {
 
   return (
     <div className="min-h-screen bg-white dark:bg-slate-900 text-gray-900 dark:text-gray-100 transition-colors">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-[60] focus:px-4 focus:py-2 focus:bg-sky-700 focus:text-white focus:rounded-md"
+      >
+        Skip to content
+      </a>
       <Navbar
         title="Security of Systems - First Force"
         leftButtons={leftButtons}
         rightButtons={rightButtons}
         user={isLoggedIn && role ? { email: email ?? '', role } : null}
       />
-      <div className="pt-16 px-4">
+      <main id="main-content" className="pt-16 px-4">
         <Outlet />
-      </div>
+      </main>
     </div>
   );
 };

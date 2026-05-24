@@ -182,7 +182,7 @@ const AdminUsersPage: React.FC = () => {
           <button
             type="submit"
             disabled={creating}
-            className="px-4 py-2 bg-sky-600 text-white rounded-md hover:bg-sky-700 transition-colors disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-sky-400"
+            className="px-4 py-2 bg-sky-700 text-white rounded-md hover:bg-sky-800 transition-colors disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-sky-400"
           >
             {creating ? 'Creating…' : 'Create'}
           </button>
@@ -223,7 +223,7 @@ const AdminUsersPage: React.FC = () => {
                   <td className={tableCell}>
                     {u.email}
                     {u.email === currentEmail && (
-                      <span className="ml-2 text-xs text-gray-400">(you)</span>
+                      <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">(you)</span>
                     )}
                   </td>
                   <td className={tableCell}>
