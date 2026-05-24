@@ -9,7 +9,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.79.4
 	github.com/eclipse/paho.mqtt.golang v1.5.0
 	github.com/golang-jwt/jwt/v4 v4.5.2
-	github.com/otiai10/gosseract/v2 v2.4.1
 	go.mongodb.org/mongo-driver v1.17.3
 	go.uber.org/mock v0.5.2
 	golang.org/x/crypto v0.38.0
@@ -31,7 +30,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sts v1.33.19 // indirect
 	github.com/aws/smithy-go v1.22.3 // indirect
 	github.com/golang/snappy v1.0.0 // indirect
-	github.com/gorilla/websocket v1.5.3 // indirect
+	github.com/gorilla/websocket v1.5.3
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/montanaflynn/stats v0.7.1 // indirect
 	github.com/xdg-go/pbkdf2 v1.0.0 // indirect
