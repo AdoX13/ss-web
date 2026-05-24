@@ -57,14 +57,31 @@ routes verified directly in `server/routes/`).
   (Photos/Devices = admin+doctor; Statistics = +researcher; Review Queue =
   admin+doctor; Admin = admin; Reports = any authed).
 
-**Testing (Phase H, partial)**
-- Vitest + Testing Library + fast-check. 26 tests across utils/hooks/types and
-  one component. `yarn test:pbt` runs the property-based suite (Lab 10 Ex 1).
+**Accessibility (Phase G)**
+- Skip-to-content link, `<main>` landmark, keyboard-focusable navbar title.
+- Dialog roles + Escape on the photo modals; `aria-label` on icon-only buttons.
+- Fixed all serious/critical axe (WCAG 2 A/AA) violations — chiefly color
+  contrast: shifted action buttons / outline-button / link text from sky-600 to
+  sky-700 (sky-600 was 3.77–4.02:1, under the 4.5:1 bar).
+
+**Testing (Phase H)**
+- Vitest + Testing Library + fast-check: **52** unit/property tests.
+  `yarn test:pbt` runs the property-based suite (Lab 10 Ex 1). Covers the API
+  client (bearer + refresh/retry), RBAC guard, auth/theme contexts, all hooks,
+  field/date/report utilities, and the reusable components.
+- **Playwright E2E** (`e2e/`, API mocked — no backend needed): **14** specs
+  covering the happy path for all 4 roles, RBAC nav visibility + route guards,
+  the review-queue approve/correct flow, a report run, and **axe a11y scans**
+  on home / login / review queue / reports. `yarn test:e2e`.
+- Vitest coverage of the logic layer (utils/hooks/contexts/components): **92%
+  lines**, gated at ≥75% via `vitest.config.ts` thresholds. Page components are
+  covered by the E2E suite (the right tool for full-page behaviour).
 
 ### Gates (all green)
 - `yarn lint` — 0 errors, 0 warnings
 - `yarn build` — passes (`tsc -b && vite build`)
-- `yarn test` — 26 passing · `yarn test:pbt` — 14 passing
+- `yarn test` — 52 passing · `yarn test:pbt` — 14 passing · `yarn test:e2e` — 14 passing
+- `yarn test:coverage` — 92% lines (≥75% threshold enforced)
 
 ### Decisions / deviations from the plan
 - **Package manager: yarn 1.22** (matches `yarn.lock`, README, and CI). A stale
@@ -79,11 +96,10 @@ routes verified directly in `server/routes/`).
 
 ### Next
 - Phase F — Camera capture page: **blocked** on `POST /api/v1/documents`
-  (not implemented) and on P3's page. See ISSUES.
-- Phase G — Accessibility pass (axe-core via Playwright, full keyboard nav,
-  Lighthouse ≥ 90).
-- Phase H — Playwright E2E across the 4 roles; raise coverage toward ≥ 75%
-  (currently only the util/hook/type/PBT layer is covered).
+  (not implemented) and on P3's page. See contract issues doc.
+- Optional: run Lighthouse a11y (needs Chrome + lighthouse CLI) to confirm ≥ 90;
+  axe (WCAG 2 A/AA) is already clean via the E2E suite.
 - Generate the API client from `server/docs/openapi.yaml` once P1 commits it.
+- Consider deleting the stale `package-lock.json` (we use yarn).
 
 See `docs/development/frontend_p4_contract_issues.md` for backend asks.
