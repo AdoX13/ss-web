@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -8,6 +9,7 @@ import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"go.mongodb.org/mongo-driver/mongo"
 
+	"mqtt-streaming-server/auth"
 	"mqtt-streaming-server/domain"
 	"mqtt-streaming-server/repository"
 )
@@ -17,16 +19,17 @@ type DeviceController struct {
 	mqttClient       mqtt.Client
 }
 
-func InitDeviceRoutes(db *mongo.Database, mqttClient mqtt.Client, mux *http.ServeMux) {
+func InitDeviceRoutes(db *mongo.Database, mqttClient mqtt.Client, mux *http.ServeMux, jwtSecret string) {
 	deviceController := &DeviceController{
 		DeviceRepository: repository.NewDeviceRepository(db),
 		mqttClient:       mqttClient,
 	}
 
-	// TODO: Implement authentication - See docs/AUTH_IMPLEMENTATION.md
-	mux.Handle("/devices", noAuth(http.HandlerFunc(deviceController.GetDevices)))
-	mux.Handle("/devices/switch", noAuth(http.HandlerFunc(deviceController.SwitchDeviceMode)))
-	mux.Handle("/devices/command", noAuth(http.HandlerFunc(deviceController.SendCommand)))
+	withAuth := auth.WithAuth(jwtSecret)
+	operators := auth.RequireRole(domain.RoleAdmin, domain.RoleDoctor)
+	mux.Handle("/devices", withAuth(operators(http.HandlerFunc(deviceController.GetDevices))))
+	mux.Handle("/devices/switch", withAuth(operators(http.HandlerFunc(deviceController.SwitchDeviceMode))))
+	mux.Handle("/devices/command", withAuth(operators(http.HandlerFunc(deviceController.SendCommand))))
 }
 
 func (ctlr DeviceController) SwitchDeviceMode(w http.ResponseWriter, r *http.Request) {
@@ -35,9 +38,10 @@ func (ctlr DeviceController) SwitchDeviceMode(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-
-
-
+	if !hasDeviceAccess(r.Context()) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
 
 	var device struct {
 		ID   string `json:"id"`
@@ -65,7 +69,10 @@ func (ctlr DeviceController) GetDevices(w http.ResponseWriter, r *http.Request) 
 
 	ctx := r.Context()
 
-
+	if !hasDeviceAccess(ctx) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
 
 	// Fetch devices from the database
 	devices, err := ctlr.DeviceRepository.GetAllDevices(ctx)
@@ -84,6 +91,10 @@ func (ctlr DeviceController) SendCommand(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	if !hasDeviceAccess(r.Context()) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
 
 	var request struct {
 		DeviceID string `json:"device_id"`
@@ -118,4 +129,12 @@ func (ctlr DeviceController) SendCommand(w http.ResponseWriter, r *http.Request)
 		"status":  "success",
 		"message": fmt.Sprintf("Command %s sent to device %s", request.Command, request.DeviceID),
 	})
+}
+
+func hasDeviceAccess(ctx context.Context) bool {
+	role := auth.RoleFromCtx(ctx)
+	if role == "" {
+		role, _ = ctx.Value("role").(string)
+	}
+	return role == domain.RoleAdmin || role == domain.RoleDoctor
 }

@@ -8,7 +8,6 @@ Utilizare:
     python3 upload_folder.py /path/to/folder --device-id medical-scanner-1
 """
 
-# TODO: Implement mTLS security - See docs/SECURITY_IMPLEMENTATION.md
 import argparse
 import json
 import os
@@ -21,8 +20,8 @@ from pathlib import Path
 import paho.mqtt.client as mqtt
 
 # Configuration
-BROKER = "127.0.0.1"
-PORT = 8883  # Plain MQTT (use 8883 for mTLS)
+BROKER = os.environ.get("MQTT_BROKER", "127.0.0.1")
+PORT = int(os.environ.get("MQTT_PORT", "8883"))  # mTLS MQTT
 
 # Default device info
 DEFAULT_DEVICE_ID = "folder-uploader"
@@ -36,8 +35,8 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
 SECRETS_DIR = os.path.join(PROJECT_ROOT, "secrets")
 CA_CRT = os.path.join(SECRETS_DIR, "ca.crt")
-CLIENT_CRT = os.path.join(SECRETS_DIR, "web.crt")
-CLIENT_KEY = os.path.join(SECRETS_DIR, "web.key")
+CLIENT_CRT = os.environ.get("MQTT_CLIENT_CRT", os.path.join(SECRETS_DIR, "web.crt"))
+CLIENT_KEY = os.environ.get("MQTT_CLIENT_KEY", os.path.join(SECRETS_DIR, "web.key"))
 
 
 class ImageUploader:
@@ -45,7 +44,7 @@ class ImageUploader:
         self.device_id = device_id
         self.device_name = device_name
         self.register_topic = f"register/{device_id}"
-        self.photo_topic = f"photos/{device_id}"
+        self.photo_topic = f"ssproject/images/{device_id}"
         self.images_to_send = []
         self.current_index = 0
         self.connected = False
@@ -147,14 +146,13 @@ class ImageUploader:
         client.on_connect = self.on_connect
         client.on_publish = self.on_publish
 
-        # TODO: For mTLS, uncomment and configure:
         client.tls_set(
             ca_certs=CA_CRT,
             certfile=CLIENT_CRT,
             keyfile=CLIENT_KEY,
             tls_version=ssl.PROTOCOL_TLSv1_2,
         )
-        client.tls_insecure_set(True)
+        client.tls_insecure_set(os.environ.get("MQTT_INSECURE", "").lower() in {"1", "true", "yes"})
 
         try:
             client.connect(BROKER, PORT, 60)

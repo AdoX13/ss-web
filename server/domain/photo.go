@@ -28,6 +28,7 @@ type Photo struct {
 	CNP                    string    `json:"cnp" bson:"cnp"`
 	ProfesieFunctie        string    `json:"profesie_functie" bson:"profesie_functie"`
 	LocDeMunca             string    `json:"loc_de_munca" bson:"loc_de_munca"`
+	DoctorName             string    `json:"doctor_name,omitempty" bson:"doctor_name,omitempty"`
 	TipControl             string    `json:"tip_control" bson:"tip_control"`
 	ControlAngajare        bool      `json:"control_angajare" bson:"control_angajare"`
 	ControlPeriodic        bool      `json:"control_periodic" bson:"control_periodic"`
@@ -57,4 +58,3 @@ type PhotoRepository interface {
 	Delete(ctx context.Context, id string) error
 	DeleteAll(ctx context.Context) (int64, error)
 }
-

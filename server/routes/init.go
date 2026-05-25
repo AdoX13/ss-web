@@ -39,11 +39,13 @@ func InitRoutes(cfg *Config) http.Handler {
 
 	// ── Legacy skeleton routes (kept for backward compatibility) ─────────────
 	InitUserRoutes(cfg.DB, mux)
-	InitPhotoRoutes(cfg.DB, mux)
-	InitDeviceRoutes(cfg.DB, cfg.MQTTClient, mux)
+	InitPhotoRoutes(cfg.DB, mux, cfg.JWTSecret, cfg.AuditWriter, cfg.EvidenceChain)
+	InitDeviceRoutes(cfg.DB, cfg.MQTTClient, mux, cfg.JWTSecret)
 
 	fs := http.FileServer(http.Dir("uploads"))
-	mux.Handle("/uploads/", http.StripPrefix("/uploads/", fs))
+	uploads := http.StripPrefix("/uploads/", fs)
+	mux.Handle("/uploads/", auth.WithAuth(cfg.JWTSecret)(
+		auth.RequireRole(domain.RoleAdmin, domain.RoleDoctor)(uploads)))
 	mux.HandleFunc("/broker-info", handleBrokerInfo)
 
 	// ── v1 API ────────────────────────────────────────────────────────────────
@@ -51,6 +53,8 @@ func InitRoutes(cfg *Config) http.Handler {
 	initReviewRoutes(cfg, mux)
 	initReportRoutes(cfg, mux)
 	initUsersRoutes(cfg, mux)
+	initAuditRoutes(cfg, mux)
+	initEvidenceRoutes(cfg, mux)
 
 	// ── WebSocket ─────────────────────────────────────────────────────────────
 	if cfg.ReviewHub != nil {

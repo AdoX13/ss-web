@@ -26,6 +26,7 @@ type BrokerHandler struct {
 	photoRepository      domain.PhotoRepository
 	deviceRepository     domain.DeviceRepository
 	reviewItemRepository domain.ReviewItemRepository
+	medicalRepository    *repository.MedicalRepository
 	ocrClient            ocr.Client
 	reviewNotifyCh       chan<- *domain.ReviewItem // may be nil
 }
@@ -33,10 +34,15 @@ type BrokerHandler struct {
 // NewBrokerHandler creates a broker handler. reviewNotifyCh receives new
 // ReviewItems for WebSocket broadcast; pass nil to disable notifications.
 func NewBrokerHandler(db *mongo.Database, ocrClient ocr.Client, reviewNotifyCh chan<- *domain.ReviewItem) BrokerHandler {
+	medicalRepo, err := repository.NewMedicalRepositoryFromEnv(db)
+	if err != nil {
+		slog.Warn("encrypted medical projection disabled; set MEDSEC_MASTER_KEY to enable P6 PHI storage", "err", err)
+	}
 	return BrokerHandler{
 		photoRepository:      repository.NewPhotoRepository(db),
 		deviceRepository:     repository.NewDeviceRepository(db),
 		reviewItemRepository: repository.NewReviewItemRepository(db),
+		medicalRepository:    medicalRepo,
 		ocrClient:            ocrClient,
 		reviewNotifyCh:       reviewNotifyCh,
 	}
@@ -104,6 +110,9 @@ func (b BrokerHandler) HandlePhoto(_ mqtt.Client, msg mqtt.Message) {
 	if err := b.photoRepository.Save(ctx, photo); err != nil {
 		slog.Error("failed to save photo", "photo_id", photoID.Hex(), "err", err)
 		return
+	}
+	if err := b.medicalRepository.SaveFromPhoto(ctx, photo); err != nil {
+		slog.Warn("failed to save encrypted medical projection", "photo_id", photoID.Hex(), "err", err)
 	}
 
 	if result != nil && result.NeedsReview {
@@ -173,10 +182,7 @@ func (b BrokerHandler) buildPhoto(id primitive.ObjectID, deviceID, imageType str
 		}
 	}
 	if f.DoctorName != nil && f.DoctorName.Value != nil {
-		// DoctorName has no flat field in the legacy Photo; store in Recomandari
-		// only as a transitional measure until the schema is migrated. The proper
-		// destination is the medical_records collection (P6's domain).
-		_ = f.DoctorName
+		photo.DoctorName = *f.DoctorName.Value
 	}
 	return photo
 }

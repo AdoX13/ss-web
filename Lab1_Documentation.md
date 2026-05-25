@@ -30,8 +30,8 @@ ss-web/
 | Bază de date | MongoDB |
 | Broker MQTT | Eclipse Mosquitto |
 | Containerizare | Docker Compose |
-| Autentificare | JWT - TODO: de implementat (vezi `docs/AUTH_IMPLEMENTATION.md`) |
-| Securitate | mTLS (Mutual TLS) - TODO: de implementat |
+| Autentificare | JWT cu roluri admin/doctor/researcher/auditor |
+| Securitate | mTLS MQTT, audit, evidence chain, criptare PHI |
 
 ---
 
@@ -64,6 +64,8 @@ GID=20                                # Group ID local (obține cu `id -g`)
 MONGO_INITDB_ROOT_USERNAME=admin      # Username MongoDB
 MONGO_INITDB_ROOT_PASSWORD=supersecret # Parolă MongoDB
 JWT_SECRET=dev-secret                 # Secret pentru JWT
+MEDSEC_MASTER_KEY=<scripts/gen_keys.sh> # Cheie master pentru criptare PHI
+EVIDENCE_ED25519_PRIVATE_KEY=<scripts/gen_keys.sh> # Cheie evidence chain
 AWS_ACCESS_KEY=local-aws-access       # Opțional: pentru S3
 AWS_SECRET_KEY=local-aws-secret       # Opțional: pentru S3
 AWS_REGION=us-east-1                  # Opțional: pentru S3
@@ -106,7 +108,6 @@ După pornire, aplicația va fi disponibilă la:
 | Backend API | http://localhost:8080 |
 | MongoDB | localhost:27019 |
 | MQTT Broker (mTLS) | localhost:8883 |
-| MQTT Broker (plain) | localhost:1883 |
 
 ---
 
@@ -318,15 +319,16 @@ ipconfig getifaddr en1
 |-----------|---------|
 | **MQTT Host** | IP-ul din `.env` (ex: `192.168.1.95`) |
 | **MQTT Port (mTLS)** | `8883` |
-| **MQTT Port (plain)** | `1883` |
 | **Topic pentru imagini** | `ssproject/images/{DEVICE_ID}` |
 | **Topic pentru înregistrare** | `register/{DEVICE_ID}` |
 
 ### Certificate necesare pentru mTLS:
 
-> **Notă:** Securitatea mTLS nu este implementată implicit. Pentru a activa conexiunea securizată:
-> 1. Urmați ghidul din [`docs/SECURITY_IMPLEMENTATION.md`](docs/SECURITY_IMPLEMENTATION.md)
-> 2. Generați certificatele necesare în directorul `secrets/`
+Generați certificatele locale în directorul `secrets/`:
+
+```bash
+scripts/gen_certs.sh
+```
 
 Pentru conexiunea securizată, aplicația mobilă are nevoie de:
 - `ca.crt` - Certificate Authority

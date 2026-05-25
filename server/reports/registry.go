@@ -22,9 +22,9 @@ type Row map[string]any
 
 // Result is the structured output of a report run.
 type Result struct {
-	Name    string
-	Columns []string
-	Rows    []Row
+	Name    string   `json:"name"`
+	Columns []string `json:"columns"`
+	Rows    []Row    `json:"rows"`
 }
 
 // Report is the interface every report implementation must satisfy.
@@ -61,54 +61,14 @@ func (r *Registry) Get(name string) (Report, bool) {
 	return rep, ok
 }
 
-// ── Stub implementations — P6 replaces these with real MongoDB aggregations ──
-
-type stubReport struct {
-	name  string
-	desc  string
-	roles []string
-}
-
-func (s *stubReport) Name() string        { return s.name }
-func (s *stubReport) Description() string { return s.desc }
-func (s *stubReport) Roles() []string     { return s.roles }
-func (s *stubReport) Run(_ context.Context, _ *mongo.Database, _ Params) (*Result, error) {
-	return &Result{Name: s.name, Columns: []string{"status"}, Rows: []Row{{"status": "not yet implemented"}}}, nil
-}
-
-// DefaultRegistry returns a registry pre-loaded with R1–R6 stub reports.
-// P6 should replace each stub with a real implementation using the same name.
+// DefaultRegistry returns the P6 report set (R1-R6).
 func DefaultRegistry() *Registry {
 	return NewRegistry(
-		&stubReport{
-			name:  "recent_exams",
-			desc:  "Medical exams in the last 30 days",
-			roles: []string{},
-		},
-		&stubReport{
-			name:  "upcoming_expirations",
-			desc:  "Exams expiring in the next 30 days",
-			roles: []string{},
-		},
-		&stubReport{
-			name:  "compliance_percentage",
-			desc:  "Percentage of workers with valid medical clearance",
-			roles: []string{},
-		},
-		&stubReport{
-			name:  "anonymized_export",
-			desc:  "Anonymized research export (k-anonymity ≥ 5)",
-			roles: []string{"researcher", "admin"},
-		},
-		&stubReport{
-			name:  "ocr_performance",
-			desc:  "OCR latency and confidence statistics",
-			roles: []string{"admin"},
-		},
-		&stubReport{
-			name:  "review_queue_stats",
-			desc:  "Review queue throughput and resolution times",
-			roles: []string{"admin", "doctor"},
-		},
+		recentExamsReport{},
+		upcomingExpirationsReport{},
+		complianceReport{},
+		anonymizedExportReport{},
+		ocrPerformanceReport{},
+		reviewQueueStatsReport{},
 	)
 }
