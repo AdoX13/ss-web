@@ -12,6 +12,12 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
+const (
+	defaultAuditLimit = 100
+	maxAuditLimit     = 500
+	auditScanLimit    = 5000
+)
+
 // Entry is one audit log record.
 type Entry struct {
 	Timestamp    time.Time      `json:"ts" bson:"ts"`
@@ -66,47 +72,59 @@ func (m *MongoWriter) Write(ctx context.Context, e Entry) error {
 }
 
 func (m *MongoWriter) List(ctx context.Context, f Filter) ([]Entry, error) {
-	filter := bson.M{}
-	if f.ActorEmail != "" {
-		filter["actor_email"] = f.ActorEmail
-	}
-	if f.Action != "" {
-		filter["action"] = f.Action
-	}
-	if f.ResourceType != "" {
-		filter["resource_type"] = f.ResourceType
-	}
-	if f.ResourceID != "" {
-		filter["resource_id"] = f.ResourceID
-	}
-	if !f.From.IsZero() || !f.To.IsZero() {
-		ts := bson.M{}
-		if !f.From.IsZero() {
-			ts["$gte"] = f.From
-		}
-		if !f.To.IsZero() {
-			ts["$lte"] = f.To
-		}
-		filter["ts"] = ts
-	}
-
-	limit := f.Limit
-	if limit <= 0 || limit > 500 {
-		limit = 100
-	}
-	cursor, err := m.collection.Find(ctx, filter, options.Find().
+	limit := normalizeLimit(f.Limit)
+	cursor, err := m.collection.Find(ctx, bson.D{}, options.Find().
 		SetSort(bson.D{{Key: "ts", Value: -1}}).
-		SetLimit(limit))
+		SetLimit(auditScanLimit))
 	if err != nil {
 		return nil, err
 	}
 	defer cursor.Close(ctx)
 
-	var entries []Entry
-	if err := cursor.All(ctx, &entries); err != nil {
-		return nil, err
+	entries := make([]Entry, 0, int(limit))
+	for cursor.Next(ctx) {
+		var entry Entry
+		if err := cursor.Decode(&entry); err != nil {
+			return nil, err
+		}
+		if !matchesFilter(entry, f) {
+			continue
+		}
+		entries = append(entries, entry)
+		if int64(len(entries)) >= limit {
+			break
+		}
 	}
-	return entries, nil
+	return entries, cursor.Err()
+}
+
+func normalizeLimit(limit int64) int64 {
+	if limit <= 0 || limit > maxAuditLimit {
+		return defaultAuditLimit
+	}
+	return limit
+}
+
+func matchesFilter(entry Entry, f Filter) bool {
+	if f.ActorEmail != "" && entry.ActorEmail != f.ActorEmail {
+		return false
+	}
+	if f.Action != "" && entry.Action != f.Action {
+		return false
+	}
+	if f.ResourceType != "" && entry.ResourceType != f.ResourceType {
+		return false
+	}
+	if f.ResourceID != "" && entry.ResourceID != f.ResourceID {
+		return false
+	}
+	if !f.From.IsZero() && entry.Timestamp.Before(f.From) {
+		return false
+	}
+	if !f.To.IsZero() && entry.Timestamp.After(f.To) {
+		return false
+	}
+	return true
 }
 
 // Slog logs audit entries via slog. Use only when MongoDB is unavailable in

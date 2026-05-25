@@ -2,14 +2,19 @@ package routes
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"mqtt-streaming-server/audit"
 	"mqtt-streaming-server/auth"
 	"mqtt-streaming-server/domain"
 )
+
+var auditTokenPattern = regexp.MustCompile(`^[A-Za-z0-9@._:/+-]{0,128}$`)
 
 func initAuditRoutes(cfg *Config, mux *http.ServeMux) {
 	withAuth := auth.WithAuth(cfg.JWTSecret)
@@ -41,11 +46,27 @@ func initAuditRoutes(cfg *Config, mux *http.ServeMux) {
 
 func parseAuditFilter(r *http.Request) (audit.Filter, error) {
 	q := r.URL.Query()
+	actorEmail, err := auditQueryToken(q.Get("actor_email"), "actor_email")
+	if err != nil {
+		return audit.Filter{}, err
+	}
+	action, err := auditQueryToken(q.Get("action"), "action")
+	if err != nil {
+		return audit.Filter{}, err
+	}
+	resourceType, err := auditQueryToken(q.Get("resource_type"), "resource_type")
+	if err != nil {
+		return audit.Filter{}, err
+	}
+	resourceID, err := auditQueryToken(q.Get("resource_id"), "resource_id")
+	if err != nil {
+		return audit.Filter{}, err
+	}
 	filter := audit.Filter{
-		ActorEmail:   q.Get("actor_email"),
-		Action:       q.Get("action"),
-		ResourceType: q.Get("resource_type"),
-		ResourceID:   q.Get("resource_id"),
+		ActorEmail:   actorEmail,
+		Action:       action,
+		ResourceType: resourceType,
+		ResourceID:   resourceID,
 	}
 	if s := q.Get("from"); s != "" {
 		t, err := time.Parse(time.RFC3339, s)
@@ -69,4 +90,12 @@ func parseAuditFilter(r *http.Request) (audit.Filter, error) {
 		filter.Limit = n
 	}
 	return filter, nil
+}
+
+func auditQueryToken(value, name string) (string, error) {
+	value = strings.TrimSpace(value)
+	if !auditTokenPattern.MatchString(value) {
+		return "", fmt.Errorf("%s contains unsupported characters", name)
+	}
+	return value, nil
 }
