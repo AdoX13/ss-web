@@ -83,9 +83,9 @@ def main():
     parser.add_argument("--device-id", default="python-sender-1", help="Device ID")
     parser.add_argument("--device-name", default="Python Test Device", help="Device Name")
     parser.add_argument("--no-tls", action="store_true", help="Disable mTLS (use plaintext)")
-    parser.add_argument("--ca", default=DEFAULT_CA_CRT, help="CA Cert path")
-    parser.add_argument("--cert", default=DEFAULT_CLIENT_CRT, help="Client Cert path")
-    parser.add_argument("--key", default=DEFAULT_CLIENT_KEY, help="Client Key path")
+    parser.add_argument("--ca", default=CA_CRT, help="CA Cert path")
+    parser.add_argument("--cert", default=CLIENT_CRT, help="Client Cert path")
+    parser.add_argument("--key", default=CLIENT_KEY, help="Client Key path")
     parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
     
     args = parser.parse_args()
@@ -172,35 +172,5 @@ def main():
         sys.exit(1)
 
 
-def on_publish(client, userdata, mid):
-    # Disconnect after second publish (the photo)
-    # Note: connect sends no message, register is mid=1, photo is mid=2
-    if mid == 2:
-        print("Message published successfully!")
-        print(f"\n✅ Device '{DEVICE_ID}' registered and photo sent!")
-        print(f"   Topic: {PHOTO_TOPIC}")
-        client.disconnect()
-        sys.exit(0)
-
-
-# Create MQTT client
-client = mqtt.Client(client_id=DEVICE_ID)
-client.on_connect = on_connect
-client.on_publish = on_publish
-
-client.tls_set(
-    ca_certs=CA_CRT,
-    certfile=CLIENT_CRT,
-    keyfile=CLIENT_KEY,
-    tls_version=ssl.PROTOCOL_TLSv1_2,
-)
-client.tls_insecure_set(os.environ.get("MQTT_INSECURE", "").lower() in {"1", "true", "yes"})
-
-print(f"Device ID: {DEVICE_ID}")
-print(f"Connecting to {BROKER}:{PORT}...")
-try:
-    client.connect(BROKER, PORT, 60)
-    client.loop_forever()
-except Exception as e:
-    print(f"Connection failed: {e}")
-    sys.exit(1)
+if __name__ == "__main__":
+    main()

@@ -249,69 +249,49 @@ def seed_encrypted_projection(db, records):
         review_items.insert_many(review_docs)
     print(f"Inserted encrypted projection: {len(medical_docs)} medical records, {len(ocr_docs)} OCR rows, {len(review_docs)} review items.")
 
-def seed_data():
+def seed_data(count):
     try:
         client = pymongo.MongoClient(MONGO_URI)
         db = client[DB_NAME]
-        
-        print("Seeding Users...")
-        users_col = db["users"]
-        users_col.delete_many({})
-        users_col.insert_many(get_users())
-        print(f"Inserted {users_col.count_documents({})} users.")
+
+        # Users are intentionally NOT seeded/cleared here: login accounts are
+        # created via the API (Argon2id-hashed passwords) and we can't reproduce
+        # that hash from Python — wiping them would break login.
 
         print("Seeding Photos/Records...")
         photos_col = db["photos"]
-        photos_col.delete_many({})
+        # Append (no delete) so we don't clobber photos ingested via MQTT.
         records = [generate_random_photo() for _ in range(count)]
         photos_col.insert_many(records)
-        print(f"Inserted {photos_col.count_documents({})} photo records.")
-        
-        # Patients collection based on photos
-        print("Seeding Patients...")
-        patients_col = db["patients"]
-        patients_col.delete_many({})
-        patients = []
-        for r in records:
-            patients.append({
-                "name": f"{r['nume']} {r['prenume']}",
-                "cnp": r['cnp'],
-                "cnp_hash": str(hash(r['cnp'])),
-                "dob": r['cnp'][1:7],  # rough extraction for demo
-                "created_at": r['timestamp']
-            })
-        patients_col.insert_many(patients)
-        print(f"Inserted {patients_col.count_documents({})} patients.")
+        print(f"Inserted {len(records)} photos (total now {photos_col.count_documents({})}).")
 
-        # Audit log collection
+        # Audit log
         print("Seeding Audit Log...")
-        audit_col = db["audit_log"]
-        audit_col.delete_many({})
         audit_logs = []
-        for i in range(5):
+        for _ in range(5):
             audit_logs.append({
                 "ts": datetime.now() - timedelta(minutes=random.randint(1, 60)),
-                "actor_id": "admin@medsec.ro",
+                "actor_email": "admin@firstforce.local",
                 "actor_ip": "127.0.0.1",
                 "action": "READ_REPORT",
                 "resource_type": "report",
                 "resource_id": "r1",
-                "details": "Viewed compliance report"
+                "details": {"note": "Viewed compliance report"},
             })
-        audit_col.insert_many(audit_logs)
-        print(f"Inserted {audit_col.count_documents({})} audit logs.")
-        
-        result = collection.insert_many(records)
-        print(f"Successfully inserted {len(result.inserted_ids)} records!")
+        db["audit_log"].insert_many(audit_logs)
+        print(f"Inserted {len(audit_logs)} audit logs.")
+
+        # Encrypted PHI projection (P6): patients, medical_records, ocr_results,
+        # review_items — encrypted/HMAC'd to match the Go server's scheme.
         seed_encrypted_projection(db, records)
-        
-        new_count = collection.count_documents({})
-        print(f"New document count: {new_count}")
-        print("✅ Data seeded successfully!")
-        
+
+        print("Data seeded successfully!")
+
     except Exception as e:
+        import traceback
         print(f"An error occurred: {e}")
-        print("Ensure 'pymongo' and 'bcrypt' are installed: pip install pymongo bcrypt")
+        traceback.print_exc()
+        print("Ensure deps are installed: pip install pymongo cryptography")
 
 if __name__ == "__main__":
     import sys
