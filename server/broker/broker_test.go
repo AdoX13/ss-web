@@ -11,18 +11,6 @@ import (
 	"mqtt-streaming-server/ocr"
 )
 
-// stubOCRClient is a test double for ocr.Client.
-type stubOCRClient struct {
-	result *ocr.Result
-	err    error
-}
-
-func (s *stubOCRClient) Process(_ context.Context, _ string, _ []byte) (*ocr.Result, error) {
-	return s.result, s.err
-}
-
-func (s *stubOCRClient) Close() error { return nil }
-
 func TestBrokerHandler_RegisterDevice(t *testing.T) {
 	tests := []struct {
 		name string

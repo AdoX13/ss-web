@@ -138,7 +138,7 @@ func (c *authController) login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
+	_ = json.NewEncoder(w).Encode(map[string]string{
 		"access_token":  accessToken,
 		"refresh_token": refreshToken,
 		"token_type":    "Bearer",
@@ -199,7 +199,7 @@ func (c *authController) refresh(w http.ResponseWriter, r *http.Request) {
 	_ = c.refreshTokens.Save(r.Context(), newRT)
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
+	_ = json.NewEncoder(w).Encode(map[string]string{
 		"access_token":  accessToken,
 		"refresh_token": newRefresh,
 		"token_type":    "Bearer",

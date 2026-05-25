@@ -103,5 +103,3 @@ func (r *reviewItemRepository) UpdateStatus(ctx context.Context, id string, u do
 // ensure interface is satisfied at compile time
 var _ domain.ReviewItemRepository = (*reviewItemRepository)(nil)
 
-// buildReviewedAt is a helper used by route handlers.
-func nowPtr() *time.Time { t := time.Now().UTC(); return &t }
