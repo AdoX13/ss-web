@@ -1,7 +1,4 @@
-
-    
-
-    name: CI
+name: CI
 
 on:
   push:
@@ -77,3 +74,4 @@ jobs:
       - name: Docker build API image
         working-directory: server
         run: docker build -t ss-web-api:test .
+
