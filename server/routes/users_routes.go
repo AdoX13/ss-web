@@ -65,7 +65,7 @@ func (c *usersController) listUsers(w http.ResponseWriter, r *http.Request) {
 		u.Password = ""
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(users)
+	_ = json.NewEncoder(w).Encode(users)
 }
 
 func (c *usersController) createUser(w http.ResponseWriter, r *http.Request) {

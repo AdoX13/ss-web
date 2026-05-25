@@ -327,9 +327,6 @@ func ParseMedicalCertificate(ocrText string) *MedicalData {
 				gapLast := avizText[inaptIdx+len("INAPT") : end]
 				data.AvizInapt = !emptyBoxRegex.MatchString(gapLast)
 				
-			} else {
-				// INAPT not found? weird.
-				// Maybe use previous logic for fallback
 			}
 		}
 	}
@@ -392,38 +389,6 @@ func extractMultilineField(text, pattern string) string {
 		return result
 	}
 	return ""
-}
-
-// containsChecked verifica daca un camp are X (este bifat)
-func containsChecked(text, fieldName string) bool {
-	// Cauta pattern-uri ca "Angajare []", "Angajare [X]", "Angajare X"
-	// The OCR might read checked boxes as [X], X, [x], x, or even just a weird symbol inside.
-	// We'll look for the field name followed by a box-like structure containing X.
-	
-	// Complex regex to catch:
-	// FieldName ... [ X ]
-	// FieldName ... X
-	// [ X ] FieldName
-	
-	// Simplest robust check: FieldName followed closely by X or [X]
-	// \s* means optional whitespace
-	// (?: ... ) is non-capturing group
-	// \[? ... \]? matches optional brackets
-	// [Xx] matches X or x
-	
-	// Case 1: Label then Box/Mark (e.g., "APT: [X]")
-	patternRight := fieldName + `[:\s\._-]*\[?\s*[Xx]\s*\]?`
-	if regexp.MustCompile(patternRight).MatchString(text) {
-		return true
-	}
-	
-	// Case 2: Box/Mark then Label (e.g., "[X] Adaptare")
-	patternLeft := `\[?\s*[Xx]\s*\]?[:\s\._-]*` + fieldName
-	if regexp.MustCompile(patternLeft).MatchString(text) {
-		return true
-	}
-
-	return false
 }
 
 // IsMedicalCertificate verifica daca textul OCR este dintr-o fisa de aptitudine medicala
