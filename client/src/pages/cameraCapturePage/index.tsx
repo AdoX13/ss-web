@@ -26,8 +26,8 @@ const CameraCapturePage: React.FC = () => {
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
       }
-    } catch (err: any) {
-      setError(err.message || 'Could not access camera. Please grant permissions.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not access camera. Please grant permissions.');
     }
   };
 
@@ -102,8 +102,8 @@ const CameraCapturePage: React.FC = () => {
         const data = await response.json().catch(() => ({}));
         setError(data.message || 'Upload failed');
       }
-    } catch (err: any) {
-      setError(err.message || 'Network error during upload');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Network error during upload');
     } finally {
       setIsUploading(false);
     }

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import fallbackImage from '../../assets/photo-fallback.svg';
+import { apiFetch } from '../../utils/api';
 
 interface PhotoCardProps {
   photoId: string;
@@ -21,11 +22,38 @@ const PhotoCard: React.FC<PhotoCardProps> = ({
   onDelete,
 }) => {
   const [isZoomed, setIsZoomed] = useState(false);
-  const [imageError, setImageError] = useState(false);
+  const [resolvedSrc, setResolvedSrc] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
   const toggleZoom = () => setIsZoomed(!isZoomed);
+
+  // The /uploads route is auth-gated, so a plain <img src> would 401. Fetch the
+  // image with the bearer token and serve it as an object URL.
+  useEffect(() => {
+    if (!imageUrl) {
+      setResolvedSrc(null);
+      return;
+    }
+    let active = true;
+    let objectUrl: string | null = null;
+    apiFetch(imageUrl)
+      .then((res) =>
+        res.ok ? res.blob() : Promise.reject(new Error(String(res.status))),
+      )
+      .then((blob) => {
+        if (!active) return;
+        objectUrl = URL.createObjectURL(blob);
+        setResolvedSrc(objectUrl);
+      })
+      .catch(() => {
+        if (active) setResolvedSrc(null);
+      });
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [imageUrl]);
 
   // Close the zoom modal with Escape.
   useEffect(() => {
@@ -53,9 +81,9 @@ const PhotoCard: React.FC<PhotoCardProps> = ({
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md border border-transparent dark:border-gray-700 overflow-hidden transition-all hover:shadow-lg relative">
         <div className="relative h-48 cursor-pointer" onClick={toggleZoom}>
           <img
-            src={imageError ? fallbackImage : imageUrl}
+            src={resolvedSrc ?? fallbackImage}
             alt={altText}
-            onError={() => setImageError(true)}
+            onError={() => setResolvedSrc(null)}
             className="w-full h-full object-cover"
           />
           {needsReview && (
@@ -170,7 +198,7 @@ const PhotoCard: React.FC<PhotoCardProps> = ({
 
             <div className="p-4 pt-20">
               <img
-                src={imageError ? fallbackImage : imageUrl}
+                src={resolvedSrc ?? fallbackImage}
                 alt={altText}
                 className="max-w-full max-h-[65vh] object-contain mx-auto rounded-md"
               />
