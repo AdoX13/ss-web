@@ -28,6 +28,9 @@ jobs:
         with:
           go-version: "1.24"
 
+      - name: Tidy modules
+        run: go mod tidy
+
       - name: Go build
         working-directory: server
         run: go build ./...
