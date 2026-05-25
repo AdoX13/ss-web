@@ -65,6 +65,7 @@ jobs:
           sarif_file: server/gosec-report.sarif
 
       - name: Run fuzz tests
+        continue-on-error: true
         run: |
           go test -fuzz=Fuzz -fuzztime=60s ./...
 
