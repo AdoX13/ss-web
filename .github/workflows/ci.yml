@@ -1,7 +1,4 @@
-
-    
-
-    name: CI
+name: CI
 
 on:
   push:
@@ -30,6 +27,10 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: "1.24"
+
+      - name: Tidy modules
+        working-directory: server
+        run: go mod tidy
 
       - name: Go build
         working-directory: server
@@ -77,3 +78,4 @@ jobs:
       - name: Docker build API image
         working-directory: server
         run: docker build -t ss-web-api:test .
+
