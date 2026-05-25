@@ -246,13 +246,11 @@ func ParseMedicalCertificate(ocrText string) *MedicalData {
 		aptIdx := -1
 		aptCondIdx := -1
 		inaptTempIdx := -1
-		inaptIdx := -1
 		
 		// Find APT: (Look for APT followed by non-alpha)
 		aptRegex := regexp.MustCompile(`APT[:;\s]+`)
 		loc := aptRegex.FindStringIndex(avizText)
 		if loc != nil {
-			aptIdx = loc[0]
 			// Use end of match to ensure we don't include the colon in the search if it was part of the match
 			// But wait, if regex includes the colon, we want loc[1]
 			aptIdx = loc[1] // Re-assign to end of match for gap start
@@ -327,9 +325,6 @@ func ParseMedicalCertificate(ocrText string) *MedicalData {
 				gapLast := avizText[inaptIdx+len("INAPT") : end]
 				data.AvizInapt = !emptyBoxRegex.MatchString(gapLast)
 				
-			} else {
-				// INAPT not found? weird.
-				// Maybe use previous logic for fallback
 			}
 		}
 	}

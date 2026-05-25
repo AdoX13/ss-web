@@ -75,7 +75,7 @@ func (ctlr DeviceController) GetDevices(w http.ResponseWriter, r *http.Request) 
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(devices)
+	_ = json.NewEncoder(w).Encode(devices)
 }
 
 func (ctlr DeviceController) SendCommand(w http.ResponseWriter, r *http.Request) {
@@ -114,7 +114,7 @@ func (ctlr DeviceController) SendCommand(w http.ResponseWriter, r *http.Request)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
+	_ = json.NewEncoder(w).Encode(map[string]string{
 		"status":  "success",
 		"message": fmt.Sprintf("Command %s sent to device %s", request.Command, request.DeviceID),
 	})

@@ -151,12 +151,3 @@ func withCORS(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r)
 	})
 }
-
-// noAuth is kept for the legacy skeleton routes only.
-func noAuth(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx := context.WithValue(r.Context(), auth.ContextEmail, "guest@example.com")
-		ctx = context.WithValue(ctx, auth.ContextRole, "guest")
-		next.ServeHTTP(w, r.WithContext(ctx))
-	})
-}
