@@ -77,6 +77,6 @@ func verifyArgon2id(password, encoded string) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("auth: decode hash: %w", err)
 	}
-	computed := argon2.IDKey([]byte(password), salt, uint32(time), memory, uint32(threads), uint32(len(storedHash)))
+	computed := argon2.IDKey([]byte(password), salt, uint32(time), uint32(memory), uint32(threads), uint32(len(storedHash)))
 	return subtle.ConstantTimeCompare(computed, storedHash) == 1, nil
 }
