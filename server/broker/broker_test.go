@@ -32,7 +32,7 @@ func TestBrokerHandler_RegisterDevice(t *testing.T) {
 		// Named input parameters for target function.
 		msg mqtt.Message
 	}{
-		// TODO: Add test cases.
+		// Add table entries here when broker registration fixtures are available.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -11,22 +11,26 @@ import (
 
 	"go.mongodb.org/mongo-driver/mongo"
 
+	"mqtt-streaming-server/audit"
 	"mqtt-streaming-server/auth"
 	"mqtt-streaming-server/domain"
+	"mqtt-streaming-server/evidence"
 	"mqtt-streaming-server/reports"
 )
 
 type reportsController struct {
 	registry *reports.Registry
 	db       *mongo.Database
-	secret   string
+	auditor  audit.Writer
+	evidence evidence.Chain
 }
 
 func initReportRoutes(cfg *Config, mux *http.ServeMux) {
 	c := &reportsController{
 		registry: cfg.ReportRegistry,
 		db:       cfg.DB,
-		secret:   cfg.JWTSecret,
+		auditor:  cfg.AuditWriter,
+		evidence: cfg.EvidenceChain,
 	}
 	withAuth := auth.WithAuth(cfg.JWTSecret)
 
@@ -94,6 +98,7 @@ func (c *reportsController) run(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "report execution failed", http.StatusInternalServerError)
 		return
 	}
+	c.recordReportAccess(r, name, result, params)
 
 	format := r.URL.Query().Get("format")
 	if format == "" {
@@ -105,6 +110,42 @@ func (c *reportsController) run(w http.ResponseWriter, r *http.Request) {
 	default:
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(result)
+	}
+}
+
+func (c *reportsController) recordReportAccess(r *http.Request, name string, result *reports.Result, params reports.Params) {
+	rows := 0
+	if result != nil {
+		rows = len(result.Rows)
+	}
+	details := map[string]any{
+		"format": params.Format,
+		"from":   params.From.UTC().Format(time.RFC3339),
+		"to":     params.To.UTC().Format(time.RFC3339),
+		"rows":   rows,
+	}
+	if c.auditor != nil {
+		_ = c.auditor.Write(r.Context(), audit.Entry{
+			Timestamp:    time.Now().UTC(),
+			ActorEmail:   auth.EmailFromCtx(r.Context()),
+			ActorIP:      r.RemoteAddr,
+			Action:       "report_run",
+			ResourceType: "report",
+			ResourceID:   name,
+			Details:      details,
+		})
+	}
+	if c.evidence != nil {
+		_ = c.evidence.Append(r.Context(), evidence.Entry{
+			ActorEmail: auth.EmailFromCtx(r.Context()),
+			Action:     "report_run",
+			Payload: map[string]any{
+				"report": name,
+				"rows":   rows,
+				"from":   params.From.UTC().Format(time.RFC3339),
+				"to":     params.To.UTC().Format(time.RFC3339),
+			},
+		})
 	}
 }
 

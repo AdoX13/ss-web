@@ -1,4 +1,3 @@
-# TODO: Implement mTLS security - See docs/SECURITY_IMPLEMENTATION.md
 import io
 import json
 import os
@@ -11,8 +10,8 @@ import paho.mqtt.client as mqtt
 from PIL import Image, ImageDraw
 
 # Configuration
-BROKER = "127.0.0.1"
-PORT = 8883  # Plain MQTT (use 8883 for mTLS)
+BROKER = os.environ.get("MQTT_BROKER", "127.0.0.1")
+PORT = int(os.environ.get("MQTT_PORT", "8883"))  # mTLS MQTT
 
 # ===== CHANGE THIS FOR EACH DEVICE =====
 DEVICE_ID = "python-sender-1"  # Unique ID for this device
@@ -28,11 +27,10 @@ PHOTO_TOPIC = f"ssproject/images/{DEVICE_ID}"
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
 
-# TODO: For mTLS, uncomment and configure:
 SECRETS_DIR = os.path.join(PROJECT_ROOT, "secrets")
 CA_CRT = os.path.join(SECRETS_DIR, "ca.crt")
-CLIENT_CRT = os.path.join(SECRETS_DIR, "web.crt")
-CLIENT_KEY = os.path.join(SECRETS_DIR, "web.key")
+CLIENT_CRT = os.environ.get("MQTT_CLIENT_CRT", os.path.join(SECRETS_DIR, "web.crt"))
+CLIENT_KEY = os.environ.get("MQTT_CLIENT_KEY", os.path.join(SECRETS_DIR, "web.key"))
 
 
 def get_local_ip():
@@ -128,14 +126,13 @@ client = mqtt.Client(client_id=DEVICE_ID)
 client.on_connect = on_connect
 client.on_publish = on_publish
 
-# TODO: For mTLS, uncomment and configure:
 client.tls_set(
     ca_certs=CA_CRT,
     certfile=CLIENT_CRT,
     keyfile=CLIENT_KEY,
     tls_version=ssl.PROTOCOL_TLSv1_2,
 )
-client.tls_insecure_set(True)
+client.tls_insecure_set(os.environ.get("MQTT_INSECURE", "").lower() in {"1", "true", "yes"})
 
 print(f"Device ID: {DEVICE_ID}")
 print(f"Connecting to {BROKER}:{PORT}...")

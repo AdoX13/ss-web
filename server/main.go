@@ -19,6 +19,7 @@ import (
 	"mqtt-streaming-server/audit"
 	"mqtt-streaming-server/auth"
 	"mqtt-streaming-server/broker"
+	medcrypto "mqtt-streaming-server/crypto"
 	"mqtt-streaming-server/domain"
 	"mqtt-streaming-server/evidence"
 	"mqtt-streaming-server/ocr"
@@ -27,8 +28,6 @@ import (
 	"mqtt-streaming-server/routes"
 )
 
-// TODO: Implement mTLS security
-// See docs/SECURITY_IMPLEMENTATION.md for instructions on how to configure TLS
 func NewTLSConfig() *tls.Config {
 	certpool := x509.NewCertPool()
 	pemCerts, err := os.ReadFile("/run/secrets/ca.crt")
@@ -70,6 +69,9 @@ func main() {
 	}()
 	db := mongoClient.Database("mqtt-streaming-server")
 	slog.Info("connected to MongoDB")
+	if err := repository.EnsureSchema(context.Background(), db); err != nil {
+		slog.Warn("MongoDB schema/index bootstrap failed", "err", err)
+	}
 
 	jwtSecret := jwtSecretFromEnv()
 
@@ -77,8 +79,8 @@ func main() {
 	refreshTokenRepo := repository.NewRefreshTokenRepository(db)
 	reviewItemRepo := repository.NewReviewItemRepository(db)
 
-	auditWriter := &audit.Slog{}
-	evidenceChain := &evidence.Noop{}
+	auditWriter := audit.NewMongoWriter(db)
+	evidenceChain := newEvidenceChain(db)
 	reportRegistry := reports.DefaultRegistry()
 
 	rateLimiter := auth.NewRateLimiter(5, 10)
@@ -152,4 +154,23 @@ func jwtSecretFromEnv() string {
 		return s
 	}
 	return "dev-secret-change-in-production"
+}
+
+func newEvidenceChain(db *mongo.Database) evidence.Chain {
+	privateKey, err := medcrypto.LoadEd25519PrivateKeyFromEnv()
+	if err != nil {
+		slog.Warn("using ephemeral evidence signing key; set EVIDENCE_ED25519_PRIVATE_KEY for stable verification", "err", err)
+		_, generatedPrivate, genErr := medcrypto.GenerateEd25519Key()
+		if genErr != nil {
+			slog.Error("failed to generate evidence signing key", "err", genErr)
+			return &evidence.Noop{}
+		}
+		privateKey = generatedPrivate
+	}
+	chain, err := evidence.NewMongoChain(db, privateKey)
+	if err != nil {
+		slog.Error("failed to initialize evidence chain", "err", err)
+		return &evidence.Noop{}
+	}
+	return chain
 }

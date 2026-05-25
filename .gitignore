@@ -1,2 +1,14 @@
 .DS_Store
+.dev-runtime/
+.env
+.env.*
+!.env.example
+uploads/
+client/node_modules/
+__pycache__/
+*.pyc
 
+# Local certificate material. Existing committed certificates must be removed
+# from git history or rotated before using this project outside local demos.
+secrets/*
+!secrets/.gitkeep

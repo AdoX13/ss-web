@@ -12,24 +12,32 @@ import (
 
 	"go.mongodb.org/mongo-driver/mongo"
 
+	"mqtt-streaming-server/audit"
+	"mqtt-streaming-server/auth"
 	"mqtt-streaming-server/domain"
+	"mqtt-streaming-server/evidence"
 	"mqtt-streaming-server/repository"
 	"mqtt-streaming-server/utils"
 )
 
 type PhotoController struct {
 	PhotoRepository domain.PhotoRepository
+	Auditor         audit.Writer
+	Evidence        evidence.Chain
 }
 
-func InitPhotoRoutes(db *mongo.Database, mux *http.ServeMux) {
+func InitPhotoRoutes(db *mongo.Database, mux *http.ServeMux, jwtSecret string, auditor audit.Writer, chain evidence.Chain) {
 	photoController := &PhotoController{
 		PhotoRepository: repository.NewPhotoRepository(db),
+		Auditor:         auditor,
+		Evidence:        chain,
 	}
 
-	// TODO: Implement authentication - See docs/AUTH_IMPLEMENTATION.md
-	mux.Handle("/photos", noAuth(http.HandlerFunc(photoController.GetPhotos)))
-	mux.Handle("/photos/all", noAuth(http.HandlerFunc(photoController.DeleteAllPhotos)))
-	mux.Handle("/photos/", noAuth(http.HandlerFunc(photoController.DeletePhoto)))
+	withAuth := auth.WithAuth(jwtSecret)
+	clinical := auth.RequireRole(domain.RoleAdmin, domain.RoleDoctor)
+	mux.Handle("/photos", withAuth(clinical(http.HandlerFunc(photoController.GetPhotos))))
+	mux.Handle("/photos/all", withAuth(clinical(http.HandlerFunc(photoController.DeleteAllPhotos))))
+	mux.Handle("/photos/", withAuth(clinical(http.HandlerFunc(photoController.DeletePhoto))))
 }
 
 func (ctlr PhotoController) GetPhotos(w http.ResponseWriter, r *http.Request) {
@@ -89,6 +97,7 @@ func (ctlr PhotoController) GetPhotos(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to fetch photos: ", http.StatusInternalServerError)
 		return
 	}
+	ctlr.recordAudit(r, "photos_list", "photos", "", map[string]any{"count": len(photos)})
 
 	for _, photo := range photos {
 		keyName := fmt.Sprintf("photos/%d.%s", photo.Timestamp.Unix(), photo.ImageType)
@@ -106,8 +115,6 @@ func (ctlr PhotoController) DeletePhoto(w http.ResponseWriter, r *http.Request) 
 	}
 
 	ctx := r.Context()
-
-
 
 	// Extract photo ID from URL path: /photos/{id}
 	path := strings.TrimPrefix(r.URL.Path, "/photos/")
@@ -139,6 +146,8 @@ func (ctlr PhotoController) DeletePhoto(w http.ResponseWriter, r *http.Request) 
 		fmt.Printf("Warning: Could not delete file %s: %v\n", fileName, err)
 		// Don't fail the request - the DB record is already deleted
 	}
+	ctlr.recordAudit(r, "photo_delete", "photo", photoID, nil)
+	ctlr.recordEvidence(r, "photo_delete", map[string]any{"photo_id": photoID})
 
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{"message": "Photo deleted successfully"})
@@ -151,8 +160,6 @@ func (ctlr PhotoController) DeleteAllPhotos(w http.ResponseWriter, r *http.Reque
 	}
 
 	ctx := r.Context()
-
-
 
 	// Delete all photos from database
 	deletedCount, err := ctlr.PhotoRepository.DeleteAll(ctx)
@@ -170,10 +177,38 @@ func (ctlr PhotoController) DeleteAllPhotos(w http.ResponseWriter, r *http.Reque
 			os.Remove(f)
 		}
 	}
+	ctlr.recordAudit(r, "photos_delete_all", "photos", "", map[string]any{"deleted": deletedCount})
+	ctlr.recordEvidence(r, "photos_delete_all", map[string]any{"deleted": deletedCount})
 
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]any{
 		"message": "All photos deleted successfully",
 		"deleted": deletedCount,
+	})
+}
+
+func (ctlr PhotoController) recordAudit(r *http.Request, action, resourceType, resourceID string, details map[string]any) {
+	if ctlr.Auditor == nil {
+		return
+	}
+	_ = ctlr.Auditor.Write(r.Context(), audit.Entry{
+		Timestamp:    time.Now().UTC(),
+		ActorEmail:   auth.EmailFromCtx(r.Context()),
+		ActorIP:      r.RemoteAddr,
+		Action:       action,
+		ResourceType: resourceType,
+		ResourceID:   resourceID,
+		Details:      details,
+	})
+}
+
+func (ctlr PhotoController) recordEvidence(r *http.Request, action string, payload map[string]any) {
+	if ctlr.Evidence == nil {
+		return
+	}
+	_ = ctlr.Evidence.Append(r.Context(), evidence.Entry{
+		ActorEmail: auth.EmailFromCtx(r.Context()),
+		Action:     action,
+		Payload:    payload,
 	})
 }
