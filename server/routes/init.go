@@ -32,53 +32,6 @@ type Config struct {
 	ReportRegistry   *reports.Registry
 	ReviewHub        *ReviewHub
 	AuthRateLimiter  *auth.RateLimiter
-	"strconv"
-
-	mqtt "github.com/eclipse/paho.mqtt.golang"
-	"go.mongodb.org/mongo-driver/mongo"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"mqtt-streaming-server/utils"
-)
-
-func InitRoutes(db *mongo.Database, mqttClient mqtt.Client) http.Handler {
-	mux := http.NewServeMux()
-	InitUserRoutes(db, mux)
-	InitPhotoRoutes(db, mux)
-	InitDeviceRoutes(db, mqttClient, mux)
-
-	// Serve static files from ./uploads
-	fs := http.FileServer(http.Dir("uploads"))
-	mux.Handle("/uploads/", http.StripPrefix("/uploads/", fs))
-
-	// Broker info endpoint
-	mux.HandleFunc("/broker-info", handleBrokerInfo)
-
-	// Prometheus metrics endpoint
-	mux.Handle("/metrics", promhttp.Handler())
-
-	corsHandler := withCORS(mux)
-	metricsHandler := withMetrics(corsHandler)
-
-	return metricsHandler
-}
-
-// customResponseWriter captures the HTTP status code
-type customResponseWriter struct {
-	http.ResponseWriter
-	statusCode int
-}
-
-func (rw *customResponseWriter) WriteHeader(code int) {
-	rw.statusCode = code
-	rw.ResponseWriter.WriteHeader(code)
-}
-
-func withMetrics(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		rw := &customResponseWriter{w, http.StatusOK}
-		next.ServeHTTP(rw, r)
-		utils.HttpRequestsTotal.WithLabelValues(r.Method, r.URL.Path, strconv.Itoa(rw.statusCode)).Inc()
-	})
 }
 
 func InitRoutes(cfg *Config) http.Handler {
@@ -112,9 +65,6 @@ func InitRoutes(cfg *Config) http.Handler {
 	// ── Health & metrics ──────────────────────────────────────────────────────
 	mux.HandleFunc("/health", handleHealth(cfg))
 	mux.HandleFunc("/metrics", handleMetrics)
-	// Get the server's local IP address
-	ip := getOutboundIP()
-	port := "8883" // mTLS MQTT port
 
 	return auth.SecureHeaders(withCORS(mux))
 }

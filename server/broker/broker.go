@@ -90,9 +90,15 @@ func (b BrokerHandler) HandlePhoto(_ mqtt.Client, msg mqtt.Message) {
 		return
 	}
 
-	// Extract text from image
+	// Generate the photo id up front so the OCR result and any review items
+	// share the same identifier.
+	photoID := primitive.NewObjectID()
+
+	// Extract text from the image via the sandboxed OCR worker.
 	startTime := time.Now()
-	text, err := b.extractTextFromImage(body)
+	ocrCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	result, err := b.ocrClient.Process(ocrCtx, photoID.Hex(), body)
+	cancel()
 	processingDuration := time.Since(startTime).Milliseconds()
 	utils.OcrJobsTotal.Inc()
 	utils.OcrProcessingMsSum.Add(float64(processingDuration))
