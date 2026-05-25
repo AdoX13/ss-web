@@ -51,6 +51,7 @@ jobs:
           working-directory: server
 
       - name: Install gosec
+        continue-on-error: true
         run: |
           go install github.com/securego/gosec/v2/cmd/gosec@latest
 
