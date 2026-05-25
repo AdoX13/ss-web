@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { apiFetch } from '../../utils/api';
+import { postJson, ApiError } from '../../utils/api';
+import type { LoginResponse } from '../../types/auth';
+import { card, heading, label, input, errorBanner } from '../../theme/styles';
 
 const LoginPage: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -15,31 +17,19 @@ const LoginPage: React.FC = () => {
     e.preventDefault();
     setError(null);
     setLoading(true);
-    
     try {
-      const response = await apiFetch('/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email, password }),
+      const data = await postJson<LoginResponse>('/api/v1/auth/login', {
+        email,
+        password,
       });
-      
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || 'Invalid email or password');
-      }
-      
-      const data = await response.json();
-      
-      // Use the login function from auth context
-      login(data.token);
-      
-      // Navigate to home page after successful login
+      login(data);
       navigate('/');
     } catch (err) {
-      setError((err as Error).message || 'An error occurred during login');
-      console.error('Login error:', err);
+      setError(
+        err instanceof ApiError
+          ? err.message
+          : 'An error occurred during login. Please try again.',
+      );
     } finally {
       setLoading(false);
     }
@@ -47,59 +37,69 @@ const LoginPage: React.FC = () => {
 
   return (
     <div className="flex justify-center items-center min-h-[80vh]">
-      <div className="bg-white p-8 rounded-lg shadow-md w-full max-w-md">
-        <h2 className="text-2xl font-semibold text-sky-700 mb-6 text-center">Login</h2>
-        
+      <div className={`${card} p-8 w-full max-w-md`}>
+        <h2 className={`${heading} mb-6 text-center`}>Login</h2>
+
         {error && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-300 text-red-700 rounded-md">
+          <div className={`mb-4 ${errorBanner}`} role="alert">
             {error}
           </div>
         )}
-        
-        <form onSubmit={handleSubmit}>
+
+        <form onSubmit={handleSubmit} noValidate>
           <div className="mb-4">
-            <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="email" className={label}>
               Email Address
             </label>
             <input
               id="email"
               type="email"
+              autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent"
+              className={input}
               required
               disabled={loading}
             />
           </div>
-          
+
           <div className="mb-6">
-            <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="password" className={label}>
               Password
             </label>
             <input
               id="password"
               type="password"
+              autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent"
+              className={input}
               required
               disabled={loading}
             />
           </div>
-          
-          <div className="flex justify-center">
-            <button 
-              type="submit"
-              className="px-6 py-3 text-lg bg-sky-600 text-white hover:bg-sky-700 inline-flex items-center justify-center rounded-md font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-sky-400 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
-              disabled={loading}
-            >
-              {loading ? 'Logging in...' : 'Login'}
-            </button>
-          </div>
+
+          <button
+            type="submit"
+            className="w-full px-6 py-3 text-lg bg-sky-700 text-white hover:bg-sky-800 inline-flex items-center justify-center rounded-md font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-sky-400 focus:ring-offset-2 dark:focus:ring-offset-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={loading}
+          >
+            {loading ? 'Logging in…' : 'Login'}
+          </button>
         </form>
+
+        <p className="mt-6 text-center text-sm text-gray-600 dark:text-gray-400">
+          Don&rsquo;t have an account?{' '}
+          <Link
+            to="/register"
+            className="text-sky-700 dark:text-sky-400 hover:underline font-medium"
+          >
+            Register
+          </Link>
+        </p>
       </div>
     </div>
   );
 };
 
-export default LoginPage; 
+export default LoginPage;

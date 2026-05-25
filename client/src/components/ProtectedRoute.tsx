@@ -1,46 +1,42 @@
-// TODO: Implement authentication - See docs/AUTH_IMPLEMENTATION.md
-// This component currently allows all access. To implement real auth:
-// 1. Uncomment the authentication checks below
-// 2. Redirect unauthenticated users to login page
-
 import React from 'react';
-import { Outlet } from 'react-router-dom';
+import { Navigate, Outlet } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
+import type { Role } from '../types/auth';
+import AccessDenied from './AccessDenied';
 
 interface ProtectedRouteProps {
-  authRequired: boolean;
+  // When true (default), unauthenticated users are sent to /login. When false,
+  // authenticated users are bounced away (used to guard /login and /register).
+  authRequired?: boolean;
+  // Optional RBAC: if set, the user's role must be one of these.
+  roles?: Role[];
 }
 
-const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ authRequired: _authRequired }) => {
-  // TODO: Implement authentication checks
-  // Currently bypassing all auth - allowing access to all routes
+const Spinner = () => (
+  <div className="flex justify-center items-center min-h-[60vh]">
+    <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-sky-500" />
+  </div>
+);
 
-  // Original implementation (uncomment when implementing real auth):
-  /*
-  import { Navigate } from 'react-router-dom';
-  import { useAuth } from '../contexts/AuthContext';
-  
-  const { isLoggedIn, loading } = useAuth();
-  
-  // While auth state is loading, show nothing (or could add a loading spinner here)
-  if (loading) {
-    return <div className="flex justify-center items-center min-h-[60vh]">
-      <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-sky-500"></div>
-    </div>;
-  }
-  
-  // If auth is required and user is not logged in, redirect to login
+const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
+  authRequired = true,
+  roles,
+}) => {
+  const { isLoggedIn, loading, hasRole } = useAuth();
+
+  if (loading) return <Spinner />;
+
   if (authRequired && !isLoggedIn) {
     return <Navigate to="/login" replace />;
   }
-  
-  // If auth is not required and user is logged in, redirect to root
   if (!authRequired && isLoggedIn) {
     return <Navigate to="/" replace />;
   }
-  */
+  if (roles && roles.length > 0 && !hasRole(...roles)) {
+    return <AccessDenied requiredRoles={roles} />;
+  }
 
-  // Always render the children (no authentication check)
   return <Outlet />;
 };
 
-export default ProtectedRoute; 
+export default ProtectedRoute;
