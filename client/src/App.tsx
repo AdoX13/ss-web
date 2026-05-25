@@ -125,10 +125,11 @@ const App = () => {
                 <Route path="/statistics" element={<StatisticsPage />} />
               </Route>
 
-              {/* Reports — any authenticated role (per-report RBAC server-side) */}
+              {/* Reports + camera capture — any authenticated role */}
               <Route element={<ProtectedRoute />}>
                 <Route path="/reports" element={<ReportsPage />} />
                 <Route path="/reports/:name" element={<ReportDetailPage />} />
+                <Route path="/camera" element={<CameraCapturePage />} />
               </Route>
 
               {/* Review queue — admin + doctor */}
