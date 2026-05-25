@@ -1,7 +1,6 @@
 package broker_test
 
 import (
-	"context"
 	"testing"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
