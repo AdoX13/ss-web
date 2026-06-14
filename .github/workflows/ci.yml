@@ -1,6 +1,7 @@
 name: CI
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
   pull_request:
@@ -16,6 +17,13 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Intentional CI failure for troubleshooting demo
+        run: |
+          echo "DEMO_FAILURE_CATEGORY=dependency_issue"
+          echo "Simulated dependency issue: package demo-missing-package could not be resolved"
+          echo "Error: Cannot find module 'demo-missing-package'"
+          exit 1
 
       # Go backend
       - name: Install system dependencies (tesseract + leptonica)
