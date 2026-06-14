@@ -2,6 +2,18 @@ name: CI
 
 on:
   workflow_dispatch:
+    inputs:
+      failure_scenario:
+        description: "Failure scenario to simulate for the troubleshooting agent"
+        required: true
+        default: dependency_issue
+        type: choice
+        options:
+          - dependency_issue
+          - test_failure
+          - permission_error
+          - timeout
+          - build_syntax_failure
   push:
     branches: [main]
   pull_request:
@@ -19,11 +31,46 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Intentional CI failure for troubleshooting demo
+        env:
+          DEMO_SCENARIO: ${{ github.event.inputs.failure_scenario || 'dependency_issue' }}
         run: |
-          echo "DEMO_FAILURE_CATEGORY=dependency_issue"
-          echo "Simulated dependency issue: package demo-missing-package could not be resolved"
-          echo "Error: Cannot find module 'demo-missing-package'"
-          exit 1
+          echo "Selected demo failure scenario: ${DEMO_SCENARIO}"
+          case "${DEMO_SCENARIO}" in
+            dependency_issue)
+              echo "DEMO_FAILURE_CATEGORY=dependency_issue"
+              echo "Simulated dependency issue: package demo-missing-package could not be resolved"
+              echo "Error: Cannot find module 'demo-missing-package'"
+              exit 1
+              ;;
+            test_failure)
+              echo "DEMO_FAILURE_CATEGORY=test_failure"
+              echo "pytest reported failed tests"
+              echo "AssertionError: expected status code 200, got 500"
+              exit 1
+              ;;
+            permission_error)
+              echo "DEMO_FAILURE_CATEGORY=permission_error"
+              echo "Error: 403 forbidden"
+              echo "permission denied while accessing protected deployment token"
+              exit 1
+              ;;
+            timeout)
+              echo "DEMO_FAILURE_CATEGORY=timeout"
+              echo "Error: operation timed out while waiting for integration tests"
+              echo "context deadline exceeded"
+              exit 1
+              ;;
+            build_syntax_failure)
+              echo "DEMO_FAILURE_CATEGORY=build_or_syntax_failure"
+              echo "SyntaxError: invalid syntax in client/src/App.tsx"
+              echo "build failed with exit code 1"
+              exit 1
+              ;;
+            *)
+              echo "Unknown demo scenario: ${DEMO_SCENARIO}"
+              exit 1
+              ;;
+          esac
 
       # Go backend
       - name: Install system dependencies (tesseract + leptonica)
